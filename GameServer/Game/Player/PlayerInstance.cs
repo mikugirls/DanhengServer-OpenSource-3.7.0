@@ -322,7 +322,7 @@ public partial class PlayerInstance(PlayerData data)
 
         await LoadScene(Data.PlaneId, Data.FloorId, Data.EntryId, Data.Pos!, Data.Rot!, false);
         if (SceneInstance == null) await EnterScene(2000101, 0, false);
-
+        RogueManager?.GetRogueScore();
         InvokeOnPlayerLogin(this);
     }
 

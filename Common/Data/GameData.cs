@@ -337,6 +337,8 @@ public static class GameData
     public static Dictionary<int, RogueBuffExcel> RogueAeonBuffData { get; private set; } = [];
     public static Dictionary<int, BattleEventDataExcel> RogueBattleEventData { get; private set; } = [];
     public static Dictionary<int, List<RogueBuffExcel>> RogueAeonEnhanceData { get; private set; } = [];
+	// 在 GameData.cs 的 #region Rogue 中添加
+    public static Dictionary<int, RogueScoreRewardExcel> RogueScoreRewardData { get; private set; } = []; 
     public static Dictionary<int, RogueAreaConfigExcel> RogueAreaConfigData { get; private set; } = [];
     public static Dictionary<int, RogueBonusExcel> RogueBonusData { get; private set; } = [];
     public static Dictionary<int, BaseRogueBuffExcel> RogueBuffData { get; private set; } = [];

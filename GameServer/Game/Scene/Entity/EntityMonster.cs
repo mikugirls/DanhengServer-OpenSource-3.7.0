@@ -8,7 +8,7 @@ using EggLink.DanhengServer.GameServer.Game.Scene.Component;
 using EggLink.DanhengServer.GameServer.Server.Packet.Send.Scene;
 using EggLink.DanhengServer.Proto;
 using EggLink.DanhengServer.Util;
-
+using EggLink.DanhengServer.Enums.Scene;
 namespace EggLink.DanhengServer.GameServer.Game.Scene.Entity;
 
 public class EntityMonster(
@@ -163,6 +163,19 @@ public class EntityMonster(
         await Scene.Player.InventoryManager!.AddItems(dropItems, sendPacket);
 
         // TODO: Rogue support
+		// --- 新增：解锁同组宝箱 ---
+        var relatedChests = Scene.Entities.Values
+        .OfType<EntityProp>()
+        .Where(p => p.GroupId == this.GroupId);
+
+    foreach (var chest in relatedChests)
+    {
+        // 检查当前状态是否为锁定/关闭
+        // 这里的 PropStateEnum.Closed 或 Locked 视你的数据定义而定
+        // 如果怪打完了还是锁着的，我们就把它设为 Idle (通常对应 0，即可交互状态)
+        await chest.SetState(PropStateEnum.ChestClosed);
+    }
+    // ----------------------
         // call mission handler
         await Scene.Player.MissionManager!.HandleFinishType(MissionFinishTypeEnum.KillMonster, this);
         await Scene.RemoveEntity(this);

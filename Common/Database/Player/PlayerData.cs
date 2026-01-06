@@ -1,4 +1,5 @@
-﻿using EggLink.DanhengServer.Data;
+﻿using System.ComponentModel.DataAnnotations.Schema;
+using EggLink.DanhengServer.Data;
 using EggLink.DanhengServer.Database.Avatar;
 using EggLink.DanhengServer.Database.Inventory;
 using EggLink.DanhengServer.Database.Quests;
@@ -32,7 +33,14 @@ public class PlayerData : BaseDatabaseDataHelper
     public int Hcoin { get; set; } = 0; // Jade
     public int Mcoin { get; set; } = 0; // Crystals
     public int TalentPoints { get; set; } = 0; // Rogue talent points
-
+    // 在 PlayerData 类中添加
+    public uint RogueScore { get; set; } = 0; // 当前周累积的模拟宇宙积分
+    public long LastRogueScoreUpdate { get; set; } = 0; // 上次积分更新的时间戳（秒）
+	// 在 EggLink.DanhengServer.Database.Player.PlayerData 类中添加
+	
+	public string TakenRogueRewardIds { get; set; } = "";
+	[NotMapped] // 告诉 ORM 忽略这个字段
+    public List<uint> TakenRogueRewardList { get; set; } = new();
     public int Pet { get; set; } = 0;
     [SugarColumn(IsNullable = true)] public int CurMusicLevel { get; set; }
 
