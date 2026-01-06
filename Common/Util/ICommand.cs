@@ -35,26 +35,35 @@ namespace EggLink.DanhengServer.Util
 
         public static void RedrawInput(string input, bool hasPrefix = true)
         {
-            // check validity
+            // 1. 检查指令合法性
             UpdateCommandValidity(input);
 
-            var length = GetWidth(input);
-            if (hasPrefix)
-            {
-                input = Prefix + input;
-                length += GetWidth(PrefixContent);
-            }
+            // 2. 获取当前行号，准备重绘
+            var (_, top) = Console.GetCursorPosition();
 
-            if (Console.GetCursorPosition().Left > 0)
-                Console.SetCursorPosition(0, Console.CursorTop);
+            // 3. 回到行首并清空当前行，增加 1 个空格余量防止残留
+            Console.SetCursorPosition(0, top);
+            Console.Write(new string(' ', Console.BufferWidth - 1));
+            Console.SetCursorPosition(0, top);
 
-            Console.Write(input + new string(' ', Console.BufferWidth - length));
+            // 4. 准备显示内容
+            string prefixStr = hasPrefix ? Prefix : "";
+            string fullDisplay = prefixStr + input;
 
-            Console.SetCursorPosition(length, Console.CursorTop);
-            CursorIndex = length - GetWidth(PrefixContent);
+            // 5. 写入完整字符串
+            Console.Write(fullDisplay);
+
+            // 6. 【关键修复】基于当前逻辑 CursorIndex 重新计算物理光标位置
+            int prefixWidth = hasPrefix ? GetWidth(PrefixContent) : 0;
+            
+            // 截取光标之前的文本段落，计算其实际物理宽度
+            string textBeforeCursor = input.Substring(0, Math.Min(CursorIndex, input.Length));
+            int physicalCursorLeft = prefixWidth + GetWidth(textBeforeCursor);
+
+            // 7. 设置物理光标，确保不超出缓冲区
+            Console.SetCursorPosition(Math.Min(physicalCursorLeft, Console.BufferWidth - 1), top);
         }
 
-        // check validity and update
         private static void UpdateCommandValidity(string input)
         {
             IsCommandValid = CheckCommandValid(input);
@@ -67,7 +76,6 @@ namespace EggLink.DanhengServer.Util
             var input = new string([.. Input]);
             if (string.IsNullOrWhiteSpace(input)) return;
 
-            // New line
             Console.WriteLine();
             Input = [];
             CursorIndex = 0;
@@ -76,35 +84,23 @@ namespace EggLink.DanhengServer.Util
             InputHistory.Add(input);
             HistoryIndex = InputHistory.Count;
 
-            // Handle command
             if (input.StartsWith('/')) input = input[1..].Trim();
             OnConsoleExcuteCommand?.Invoke(input);
 
-            // reset
             IsCommandValid = true;
         }
 
         public static void HandleBackspace()
         {
-            if (CursorIndex <= 0) return;
+            // 严格检查索引和内容
+            if (CursorIndex <= 0 || Input.Count == 0) return;
+            
             CursorIndex--;
-            var targetWidth = GetWidth(Input[CursorIndex].ToString());
+            // 移除字符前记录其宽度
             Input.RemoveAt(CursorIndex);
 
-            var (left, _) = Console.GetCursorPosition();
-            Console.SetCursorPosition(left - targetWidth, Console.CursorTop);
-            var remain = new string([.. Input.Skip(CursorIndex)]);
-            Console.Write(remain + new string(' ', targetWidth));
-            Console.SetCursorPosition(left - targetWidth, Console.CursorTop);
-
-            // update
-            var prev = IsCommandValid;
-            UpdateCommandValidity(new string([.. Input]));
-
-            if (IsCommandValid != prev)
-            {
-                RedrawInput(Input);
-            }
+            // 移除后强制重绘，它会自动处理坐标和残留清除
+            RedrawInput(Input);
         }
 
         public static void HandleUpArrow()
@@ -117,7 +113,6 @@ namespace EggLink.DanhengServer.Util
             Input = [.. history];
             CursorIndex = Input.Count;
 
-            // update
             UpdateCommandValidity(history);
             RedrawInput(Input);
         }
@@ -139,7 +134,6 @@ namespace EggLink.DanhengServer.Util
                 var history = InputHistory[HistoryIndex];
                 Input = [.. history];
                 CursorIndex = Input.Count;
-                // update
                 UpdateCommandValidity(history);
             }
             RedrawInput(Input);
@@ -147,20 +141,27 @@ namespace EggLink.DanhengServer.Util
 
         public static void HandleLeftArrow()
         {
+            // 1. 边界防御：如果已经在最左边，绝对不执行后续逻辑
             if (CursorIndex <= 0) return;
 
-            var (left, _) = Console.GetCursorPosition();
+            // 2. 更新逻辑索引
             CursorIndex--;
-            Console.SetCursorPosition(left - GetWidth(Input[CursorIndex].ToString()), Console.CursorTop);
+
+            // 3. 强制触发重绘，由重绘逻辑计算准确的物理光标位置
+            // 这种方式比手动移动 SetCursorPosition 更稳健，能完美处理中文字符
+            RedrawInput(Input);
         }
 
         public static void HandleRightArrow()
         {
+            // 1. 边界防御：如果已经在最右边，不执行
             if (CursorIndex >= Input.Count) return;
 
-            var (left, _) = Console.GetCursorPosition();
+            // 2. 更新逻辑索引
             CursorIndex++;
-            Console.SetCursorPosition(left + GetWidth(Input[CursorIndex - 1].ToString()), Console.CursorTop);
+
+            // 3. 强制重绘
+            RedrawInput(Input);
         }
 
         public static void HandleInput(ConsoleKeyInfo keyInfo)
@@ -176,21 +177,8 @@ namespace EggLink.DanhengServer.Util
             Input.Insert(CursorIndex, keyChar);
             CursorIndex++;
 
-            var (left, _) = Console.GetCursorPosition();
-            var newCursor = left + GetWidth(keyChar.ToString());
-            if (newCursor > Console.BufferWidth - 1) newCursor = Console.BufferWidth - 1;
-
-            Console.Write(new string([.. Input.Skip(CursorIndex - 1)]));
-            Console.SetCursorPosition(newCursor, Console.CursorTop);
-
-            // update
-            var prev = IsCommandValid;
-            UpdateCommandValidity(new string([.. Input]));
-
-            if (IsCommandValid != prev)
-            {
-                RedrawInput(Input);
-            }
+            // 输入后重绘
+            RedrawInput(Input);
         }
 
         #endregion
@@ -239,5 +227,4 @@ namespace EggLink.DanhengServer.Util
             return !invalidChars.Any(c => input.Contains(c));
         }
     }
-
 }

@@ -68,7 +68,42 @@ public class MailManager(PlayerInstance player) : BasePlayerManager(player)
 
         await Player.SendPacket(new PacketNewMailScNotify(mail.MailID));
     }
+  public async ValueTask TakeMailAttachments(List<uint> mailIds)
+{
+    var totalRewards = new List<ItemData>();
+    var successfulMailIds = new List<uint>();
 
+    foreach (var id in mailIds)
+    {
+        var mail = GetMail((int)id);
+        if (mail == null || mail.Attachment?.Items == null || mail.Attachment.Items.Count == 0) continue;
+
+        totalRewards.AddRange(mail.Attachment.Items);
+        successfulMailIds.Add(id);
+
+        mail.Attachment.Items.Clear();
+        mail.IsRead = true;
+    }
+
+    if (totalRewards.Count > 0)
+    {
+        // 1. 发放到背包
+        if (Player.InventoryManager != null)
+        {
+            await Player.InventoryManager.AddItems(totalRewards);
+        }
+        
+        // 2. 发送响应包
+        await Player.SendPacket(new PacketBatchGetMailItemScRsp(successfulMailIds, totalRewards));
+        
+        // 3. 【核心修正】将当前玩家 UID 加入保存列表
+        // 这样后台线程会在 5 分钟内自动完成数据库更新
+        if (!DatabaseHelper.ToSaveUidList.Contains(Player.Uid))
+        {
+            DatabaseHelper.ToSaveUidList.Add(Player.Uid);
+        }
+    }
+}
     public List<ClientMail> ToMailProto()
     {
         var list = new List<ClientMail>();
