@@ -12,6 +12,9 @@ public class ChallengeConfigExcel : ExcelResource
 
     // General item data
     public int ID { get; set; }
+	// 关键补全：对应 JSON 里的 PreChallengeMazeID 字段
+	[JsonProperty("PreChallengeMazeID")]
+    public int PreChallengeMazeID { get; set; }
     public int GroupID { get; set; }
     public int MapEntranceID { get; set; }
     public int MapEntranceID2 { get; set; }
