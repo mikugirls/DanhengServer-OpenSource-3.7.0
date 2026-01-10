@@ -14,7 +14,7 @@ using EggLink.DanhengServer.Util;
 namespace EggLink.DanhengServer.GameServer.Game.Friend;
 
 public class FriendManager(PlayerInstance player) : BasePlayerManager(player)
-{
+{   public static bool EnableRecommendLog = false; // LOG开关，默认关闭
     public FriendData FriendData { get; set; } =
         DatabaseHelper.Instance!.GetInstanceOrCreateNew<FriendData>(player.Uid);
 
@@ -357,117 +357,121 @@ public class FriendManager(PlayerInstance player) : BasePlayerManager(player)
         if (!FriendData.FriendDetailList.TryGetValue(uid, out var friend)) return;
         friend.IsMark = isMark;
     }
- // 建议修改函数签名，传入客户端请求的 Type
-public GetFriendRecommendLineupScRsp GetGlobalRecommendLineup(uint challengeId, uint requestType) 
+   public GetFriendRecommendLineupScRsp GetGlobalRecommendLineup(uint challengeId, uint requestType) 
 {
-    var Log = Logger.GetByClassName();
-    Log.Info($"[LOG-DEBUG] === 战报请求开始 ===");
-    Log.Info($"[LOG-DEBUG] 请求关卡: {challengeId} | 类型: {requestType} | UID: {Player.Uid}");
+   var Log = Logger.GetByClassName();
+    
+    // 关键错误日志建议始终保留
+    if (EnableRecommendLog)
+        Log.Info($"[战报请求] >>> 开始处理 | 关卡: {challengeId} | 类型: {requestType} | 当前UID: {Player.Uid}");
 
-    var rsp = new GetFriendRecommendLineupScRsp
-    {
-        Key = challengeId,
-        Retcode = 0,
-        Type = (DLLLEANDAIH)requestType, 
-        ONOCJEEBFCI = false    
-    };
+    var rsp = new GetFriendRecommendLineupScRsp { Key = challengeId, Retcode = 0, Type = (DLLLEANDAIH)requestType, ONOCJEEBFCI = false };
 
-    if (!GameData.ChallengeConfigData.TryGetValue((int)challengeId, out var config))
-    {
-        Log.Error($"[LOG-DEBUG] 找不到配置 ID: {challengeId}");
+    // 1. 获取配置
+    if (!GameData.ChallengeConfigData.TryGetValue((int)challengeId, out var config)) {
+        Log.Error($"[战报错误] 找不到关卡配置! ID: {challengeId}");
         return rsp;
     }
+    
+    if (EnableRecommendLog)
+        Log.Info($"[战报调试] 配置匹配成功: ID {config.ID} | GroupID: {config.GroupID}");
 
-    var allRecords = DatabaseHelper.sqlSugarScope?.Queryable<FriendRecordData>().ToList() ?? new();
+    // --- 核心修改：数据合并与去重逻辑开始 ---
 
-    foreach (var record in allRecords)
-    {
+    // 1. 从数据库检索所有记录 (离线玩家数据)
+    var dbRecords = DatabaseHelper.sqlSugarScope?.Queryable<FriendRecordData>().ToList() ?? new List<FriendRecordData>();
+
+    // 2. 从内存映射表获取记录 (在线玩家/热数据)
+    var memRecords = DatabaseHelper.GetAllInstanceFromMap<FriendRecordData>() ?? new List<FriendRecordData>();
+
+    // 3. 使用 Dictionary 进行去重 (以 Uid 为 Key)
+    // 逻辑：先存数据库的，再存内存的。如果 Uid 重复，内存中的最新对象会覆盖数据库的对象。
+    var mergedMap = new Dictionary<int, FriendRecordData>();
+
+    foreach (var record in dbRecords) {
+        mergedMap[record.Uid] = record;
+    }
+
+    foreach (var record in memRecords) {
+        mergedMap[record.Uid] = record;
+    }
+
+    // 提取合并后的最终列表
+    var allRecords = mergedMap.Values.ToList();
+
+    // --- 数据合并与去重逻辑结束 ---
+
+    if (EnableRecommendLog)
+        Log.Info($"[战报数据] 合并完成：数据库({dbRecords.Count}) + 内存({memRecords.Count}) -> 去重后共 {allRecords.Count} 条记录");
+
+    foreach (var record in allRecords) {
         var pData = PlayerData.GetPlayerByUid(record.Uid);
         if (pData == null) continue;
 
         bool isSelf = (record.Uid == Player.Uid);
-
-        if (!record.ChallengeGroupStatistics.TryGetValue((uint)config.GroupID, out var groupStat)) continue;
-
-        if (groupStat.MemoryGroupStatistics == null || 
-            !groupStat.MemoryGroupStatistics.TryGetValue(challengeId, out var memoryStats)) continue;
+        // 尝试获取对应 GroupID 的统计数据
+        if (record.ChallengeGroupStatistics == null || !record.ChallengeGroupStatistics.TryGetValue((uint)config.GroupID, out var groupStat)) continue;
 
         var entry = new KEHMGKIHEFN();
         entry.PlayerInfo = pData.ToSimpleProto(isSelf ? FriendOnlineStatus.Online : FriendOnlineStatus.Offline);
 
-        if (isSelf)
-        {
-            Log.Info($"[LOG-DEBUG] [自己] 匹配成功，开始填充战报容器...");
-            rsp.ONOCJEEBFCI = true; 
-            
-            // 修正处：根据你提供的源码，这里没有 Id 字段
-            entry.GIEIDJEEPAC = new FCNOLLFGPCK
-            {
-                PlayerInfo = entry.PlayerInfo,
-                CurLevelStars = memoryStats.Stars,
-                ScoreId = memoryStats.RoundCount, 
-                BuffOne = (uint)config.MazeBuffID,
-                BuffTwo = (uint)config.MazeBuffID,
-                RemarkName = "" // 源码中有此字段，设为空即可
-            };
+        if (EnableRecommendLog)
+            Log.Info($"[战报处理] 正在填充条目: {pData.Name} (UID: {record.Uid})");
 
-            // 填充详细阵容 (必须要转换模型)
-            foreach (var dbTeam in memoryStats.Lineups)
-            {
+        if (isSelf) rsp.ONOCJEEBFCI = true;
+
+        // --- 分支判定逻辑 (增加 ?? [] 修复 CS8602 警告) ---
+
+        // A. 虚构叙事 (Story)
+        if (config.IsStory() && groupStat.StoryGroupStatistics != null && groupStat.StoryGroupStatistics.TryGetValue(challengeId, out var storyStats)) {
+            if (EnableRecommendLog) Log.Info($"[战报识别] >>> [虚构叙事] | 分数: {storyStats.Score}");
+            
+            entry.ADDCJEJPFEF = new KAMCIOPBPGA { PeakTargetList = { 1, 2, 3 } };
+            // 修复警告：storyStats.Lineups 可能为空
+            foreach (var dbTeam in storyStats.Lineups ?? [])
+                foreach (var av in dbTeam ?? []) 
+                    entry.ADDCJEJPFEF.AvatarList.Add(new OILPIACENNH { Id = av.Id, Level = av.Level, Index = av.Index, AvatarType = AvatarType.AvatarFormalType, GGDIIBCDOBB = av.Rank });
+        }
+        // B. 末日幻影 (Boss)
+        else if (config.IsBoss() && groupStat.BossGroupStatistics != null && groupStat.BossGroupStatistics.TryGetValue(challengeId, out var bossStats)) {
+            if (EnableRecommendLog) Log.Info($"[战报识别] >>> [末日幻影] | 分数: {bossStats.Score}");
+            
+            entry.JILKKAJBLJK = new IIGJFPMIGKF { PeakTargetList = { 1, 2, 3 }, BuffId = (uint)config.MazeBuffID, IsUltraBossWin = true, IsHard = true };
+            // 修复警告：bossStats.Lineups 可能为空
+            foreach (var dbTeam in bossStats.Lineups ?? [])
+                foreach (var av in dbTeam ?? []) 
+                    entry.JILKKAJBLJK.AvatarList.Add(new OILPIACENNH { Id = av.Id, Level = av.Level, Index = av.Index, AvatarType = AvatarType.AvatarFormalType, GGDIIBCDOBB = av.Rank });
+        }
+        // C. 忘却之庭 (Memory)
+        else if (groupStat.MemoryGroupStatistics != null && groupStat.MemoryGroupStatistics.TryGetValue(challengeId, out var memoryStats)) {
+            if (EnableRecommendLog) Log.Info($"[战报识别] >>> [忘却之庭] | 轮数: {memoryStats.RoundCount}");
+            
+            entry.GIEIDJEEPAC = new FCNOLLFGPCK { PlayerInfo = entry.PlayerInfo, CurLevelStars = memoryStats.Stars, ScoreId = memoryStats.RoundCount, BuffOne = (uint)config.MazeBuffID, BuffTwo = (uint)config.MazeBuffID };
+            // 修复警告：memoryStats.Lineups 可能为空
+            foreach (var dbTeam in memoryStats.Lineups ?? []) {
                 var teamProto = new ChallengeLineupList();
-                foreach (var av in dbTeam)
-                {
-                    teamProto.AvatarList.Add(new ChallengeAvatarInfo
-                    {
-                        Id = av.Id,
-                        Level = av.Level,
-                        Index = av.Index,
-                        AvatarType = AvatarType.AvatarFormalType, 
-                        GGDIIBCDOBB = av.Rank 
-                    });
-                }
+                foreach (var av in dbTeam ?? []) 
+                    teamProto.AvatarList.Add(new ChallengeAvatarInfo { Id = av.Id, Level = av.Level, Index = av.Index, AvatarType = AvatarType.AvatarFormalType, GGDIIBCDOBB = av.Rank });
                 entry.GIEIDJEEPAC.LineupList.Add(teamProto);
             }
         }
-        else
-        {
-            entry.PMHIBHNEPHI = BuildMemoryContainer(memoryStats, challengeId);
-            entry.ADDCJEJPFEF = new KAMCIOPBPGA
-            {
-                PeakTargetList = { memoryStats.Stars, memoryStats.RoundCount }
-            };
+        else {
+            if (EnableRecommendLog) Log.Warn($"[战报跳过] UID {record.Uid} 模式未匹配");
+            continue;
         }
 
         rsp.ChallengeRecommendList.Add(entry);
     }
 
-    Log.Info($"[LOG-DEBUG] === 处理完毕 === ONOCJEEBFCI: {rsp.ONOCJEEBFCI}");
+    if (EnableRecommendLog)
+        Log.Info($"[战报完成] <<< 处理完毕 | 发送总数: {rsp.ChallengeRecommendList.Count}");
+        
     return rsp;
 }
-  private DKHENLMAEBE BuildMemoryContainer(MemoryGroupStatisticsPb stats, uint cid)
-{
-    var container = new DKHENLMAEBE();
-    
-    // stats.Lineups 是 List<List<ChallengeAvatarInfoPb>>
-    foreach (var team in stats.Lineups)
-    {
-        var sideProto = new GIIHBKMJKHM { PeakLevelId = cid };
-        
-        foreach (var avPb in team)
-        {
-            sideProto.AvatarList.Add(new OILPIACENNH
-            {
-                AvatarType = avPb.AvatarType,
-                Id = avPb.Id,
-                Level = avPb.Level,
-                Index = avPb.Index,
-                GGDIIBCDOBB = avPb.Rank // 刚才已经在 FriendRecordData 里补全了 Rank 属性
-            });
-        }
-        container.HFPPEGIFFLM.Add(sideProto);
-    }
-    return container;
-}
+
+
+
+
     public GetFriendListInfoScRsp ToProto()
     {
         var proto = new GetFriendListInfoScRsp();

@@ -238,44 +238,67 @@ public class ChallengeManager(PlayerInstance player) : BasePlayerManager(player)
         // 先尝试通过常规 Switch 处理已知类型
         switch (inst)
         {
-            case ChallengeMemoryInstance memory:
-            {
-                Player.FriendRecordData!.ChallengeGroupStatistics.TryAdd((uint)memory.Config.GroupID, new ChallengeGroupStatisticsPb { GroupId = (uint)memory.Config.GroupID });
-                var stats = Player.FriendRecordData.ChallengeGroupStatistics[(uint)memory.Config.GroupID];
-                stats.MemoryGroupStatistics ??= [];
+          case ChallengeMemoryInstance memory:
+{
+    Player.FriendRecordData!.ChallengeGroupStatistics.TryAdd((uint)memory.Config.GroupID, new ChallengeGroupStatisticsPb { GroupId = (uint)memory.Config.GroupID });
+    var stats = Player.FriendRecordData.ChallengeGroupStatistics[(uint)memory.Config.GroupID];
+    stats.MemoryGroupStatistics ??= [];
 
-                var starCount = 0u;
-                for (var i = 0; i < 3; i++) starCount += (memory.Data.Memory.Stars & (1 << i)) != 0 ? 1u : 0u;
+    // 计算本次战斗星数
+    var starCount = 0u;
+    for (var i = 0; i < 3; i++) starCount += (memory.Data.Memory.Stars & (1 << i)) != 0 ? 1u : 0u;
 
-                if (stats.MemoryGroupStatistics.GetValueOrDefault((uint)memory.Config.ID)?.Stars > starCount) return;
+    // 计算本次消耗轮数 (总上限 - 剩余)
+    var newRoundCount = (uint)(memory.Config.ChallengeCountDown - memory.Data.Memory.RoundsLeft);
 
-                var pb = new MemoryGroupStatisticsPb
-                {
-                    RoundCount = (uint)(memory.Config.ChallengeCountDown - memory.Data.Memory.RoundsLeft),
-                    Stars = starCount,
-                    RecordId = Player.FriendRecordData!.NextRecordId++,
-                    Level = memory.Config.Floor
-                };
+    // 获取旧记录进行对比
+    if (stats.MemoryGroupStatistics.TryGetValue((uint)memory.Config.ID, out var existing))
+    {
+        // 逻辑判断：
+        // 1. 如果旧记录星数更高，绝对不更新
+        if (existing.Stars > starCount) return;
 
-                foreach (var type in new[] { ExtraLineupType.LineupChallenge, ExtraLineupType.LineupChallenge2 })
-                {
-                    if (type == ExtraLineupType.LineupChallenge2 && memory.Config.StageNum < 2) continue;
-                    var lineup = Player.LineupManager!.GetExtraLineup(type);
-                    if (lineup?.BaseAvatars == null) continue;
+        // 2. 如果星数相等
+        if (existing.Stars == starCount)
+        {
+            // 如果不是3星，且轮数没有进步（新轮数 >= 旧轮数），则不更新
+            // 但如果是3星，我们跳过这个判断，强制进入后面的更新流程（刷新数据/阵容）
+            if (starCount < 3 && newRoundCount >= existing.RoundCount) return;
+        }
+    }
 
-                    var lineupPb = new List<ChallengeAvatarInfoPb>();
-                    uint idx = 0;
-                    foreach (var avatar in lineup.BaseAvatars)
-                    {
-                        var formal = Player.AvatarManager!.GetFormalAvatar(avatar.BaseAvatarId);
-                        if (formal == null) continue;
-                        lineupPb.Add(new ChallengeAvatarInfoPb { Index = idx++, Id = (uint)formal.BaseAvatarId, AvatarType = AvatarType.AvatarFormalType, Level = (uint)formal.Level });
-                    }
-                    pb.Lineups.Add(lineupPb);
-                }
-                stats.MemoryGroupStatistics[(uint)memory.Config.ID] = pb;
-                return; // 处理完毕退出
-            }
+    // 构造新战报
+    var pb = new MemoryGroupStatisticsPb
+    {
+        RoundCount = newRoundCount,
+        Stars = starCount,
+        RecordId = Player.FriendRecordData!.NextRecordId++,
+        Level = memory.Config.Floor
+    };
+
+    // 抓取阵容逻辑...
+    foreach (var type in new[] { ExtraLineupType.LineupChallenge, ExtraLineupType.LineupChallenge2 })
+    {
+        if (type == ExtraLineupType.LineupChallenge2 && memory.Config.StageNum < 2) continue;
+        var lineup = Player.LineupManager!.GetExtraLineup(type);
+        if (lineup?.BaseAvatars == null) continue;
+
+        var lineupPb = new List<ChallengeAvatarInfoPb>();
+        uint idx = 0;
+        foreach (var avatar in lineup.BaseAvatars)
+        {
+            var formal = Player.AvatarManager!.GetFormalAvatar(avatar.BaseAvatarId);
+            if (formal == null) continue;
+            lineupPb.Add(new ChallengeAvatarInfoPb { Index = idx++, Id = (uint)formal.BaseAvatarId, AvatarType = AvatarType.AvatarFormalType, Level = (uint)formal.Level });
+        }
+        pb.Lineups.Add(lineupPb);
+    }
+
+    // 更新到内存并持久化到数据库
+    stats.MemoryGroupStatistics[(uint)memory.Config.ID] = pb;
+    
+    return;
+}
 
             case ChallengeStoryInstance story:
             {
@@ -315,6 +338,7 @@ public class ChallengeManager(PlayerInstance player) : BasePlayerManager(player)
                     pb.Lineups.Add(lineupPb);
                 }
                 stats.StoryGroupStatistics[(uint)story.Config.ID] = pb;
+				
                 return;
             }
 
@@ -356,6 +380,7 @@ public class ChallengeManager(PlayerInstance player) : BasePlayerManager(player)
                     pb.Lineups.Add(lineupPb);
                 }
                 stats.BossGroupStatistics[(uint)boss.Config.ID] = pb;
+				
                 return;
             }
         }
@@ -400,6 +425,7 @@ public class ChallengeManager(PlayerInstance player) : BasePlayerManager(player)
                 if (lineupPb.Count > 0) pb.Lineups.Add(lineupPb);
             }
             stats.StoryGroupStatistics[levelId] = pb;
+			
         }
     }
 

@@ -183,24 +183,36 @@ public class StoryGroupStatisticsPb
 
     public StoryGroupStatistics ToProto()
     {
+        var stt = new StoryStatisticsInfo
+        {
+            CurLevelStars = Stars,
+            Level = Level,
+            BuffOne = BuffOne,
+            BuffTwo = BuffTwo,
+            ScoreId = Score
+        };
+
+        // --- 核心修正：只创建一个容器 ---
+        var singleContainer = new ChallengeLineupList();
+
+        // 遍历所有队伍（第一队和第二队）
+        foreach (var team in Lineups)
+        {
+            foreach (var av in team)
+            {
+                // 将所有 8 个人全部加进这唯一一个容器的 AvatarList 中
+                // 这里会调用 av.ToProto()，它会带上正确的 Index (0-7)
+                singleContainer.AvatarList.Add(av.ToProto());
+            }
+        }
+
+        // 把这包含 8 个人的唯一容器加进去
+        stt.LineupList.Add(singleContainer);
+
         return new StoryGroupStatistics
         {
             RecordId = RecordId,
-            SttInfo = new StoryStatisticsInfo
-            {
-                CurLevelStars = Stars,
-                Level = Level,
-                LineupList =
-                {
-                    Lineups.Select(x => new ChallengeLineupList
-                    {
-                        AvatarList = { x.Select(avatar => avatar.ToProto()) }
-                    })
-                },
-                BuffOne = BuffOne,
-                BuffTwo = BuffTwo,
-                ScoreId = Score
-            }
+            SttInfo = stt
         };
     }
 }

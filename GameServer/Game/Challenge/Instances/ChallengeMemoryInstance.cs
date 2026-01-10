@@ -1,6 +1,7 @@
 using EggLink.DanhengServer.Data;
 using EggLink.DanhengServer.Data.Excel;
 using EggLink.DanhengServer.Database.Friend;
+using EggLink.DanhengServer.Database;
 using EggLink.DanhengServer.Enums.Mission;
 using EggLink.DanhengServer.GameServer.Game.Battle;
 using EggLink.DanhengServer.GameServer.Game.Challenge.Definitions;
@@ -179,6 +180,7 @@ public class ChallengeMemoryInstance(PlayerInstance player, ChallengeDataPb data
 
             // save
             Player.ChallengeManager.SaveBattleRecord(this);
+		
 
             // add development
             Player.FriendRecordData!.AddAndRemoveOld(new FriendDevelopmentInfoPb
