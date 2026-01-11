@@ -1,4 +1,3 @@
-// 文件路径: GameServer/Server/Packet/Recv/Activity/HandlerTakeLoginActivityRewardCsReq.cs
 using EggLink.DanhengServer.GameServer.Server;
 using EggLink.DanhengServer.GameServer.Server.Packet.Send.Activity;
 using EggLink.DanhengServer.Kcp;
@@ -16,10 +15,10 @@ public class HandlerTakeLoginActivityRewardCsReq : Handler
 
         if (player?.ActivityManager == null) return;
 
-        // 解包 ActivityManager 返回的 (items, panelId, retcode)
-        var (rewardProto, panelId, retcode) = await player.ActivityManager.TakeLoginReward(req.Id, req.TakeDays);
+        // 【关键改动】：解包 4 个参数，获取服务器纠偏后的 finalId
+        var (rewardProto, panelId, retcode, finalId) = await player.ActivityManager.TakeLoginReward(req.Id, req.TakeDays);
 
-        // 发送 Packet，带入动态 panelId
-        await connection.SendPacket(new PacketTakeLoginActivityRewardScRsp(req.Id, req.TakeDays, retcode, rewardProto, panelId));
+        // 【关键改动】：发送 Packet 时传入 finalId (如 10018)，而不是原始的 req.Id (如 1003)
+        await connection.SendPacket(new PacketTakeLoginActivityRewardScRsp(finalId, req.TakeDays, retcode, rewardProto, panelId));
     }
 }
