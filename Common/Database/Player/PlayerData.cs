@@ -37,6 +37,18 @@ public class PlayerData : BaseDatabaseDataHelper
     public uint RogueScore { get; set; } = 0; // 当前周累积的模拟宇宙积分
     public long LastRogueScoreUpdate { get; set; } = 0; // 上次积分更新的时间戳（秒）
 	// 在 EggLink.DanhengServer.Database.Player.PlayerData 类中添加
+	// --- 新增沉浸器字段 ---
+    /// <summary>
+    /// 沉浸器数量 (ID 33)
+    /// </summary>
+    public int ImmersiveArtifact { get; set; } = 0;
+
+    /// <summary>
+    /// 已解锁的合成配方 ID 列表
+    /// 使用 SqlSugar 的 IsJson 标签将其在数据库中存为字符串
+    /// </summary>
+    [SugarColumn(IsJson = true)] 
+    public List<int> UnlockedRecipes { get; set; } = new();
 	
 	public string TakenRogueRewardIds { get; set; } = "";
 	[NotMapped] // 告诉 ORM 忽略这个字段

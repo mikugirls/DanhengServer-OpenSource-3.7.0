@@ -40,7 +40,7 @@ using EggLink.DanhengServer.Util;
 using static EggLink.DanhengServer.GameServer.Plugin.Event.PluginEvent;
 using OfferingManager = EggLink.DanhengServer.GameServer.Game.Inventory.OfferingManager;
 using EggLink.DanhengServer.GameServer.Server.Packet.Send.Activity;
-
+using EggLink.DanhengServer.GameServer.Server.Packet.Send.Item;
 namespace EggLink.DanhengServer.GameServer.Game.Player;
 
 public partial class PlayerInstance(PlayerData data)
@@ -207,7 +207,7 @@ public partial class PlayerInstance(PlayerData data)
         FriendRecordData = InitializeDatabase<FriendRecordData>();
 
         Components.Add(new SwitchHandComponent(this));
-
+        
         if ((int)(ServerPrefsData.Version * 1000) != GameConstants.GameVersionInt)
         {
             ServerPrefsData.ServerPrefsDict.Clear();
@@ -238,7 +238,7 @@ public partial class PlayerInstance(PlayerData data)
                 GameData.SpecialAvatarData.TryGetValue(info.SpecialAvatarId * 10 + 0, out var e))
                 AvatarManager!.GetTrialAvatar(e.SpecialAvatarID)?.CheckLevel(Data.WorldLevel);
         }
-
+        
         if (ConfigManager.Config.ServerOption.EnableMission) await MissionManager!.AcceptMainMissionByCondition();
 
         foreach (var friendDevelopmentInfoPb in FriendRecordData.DevelopmentInfos.ToArray())
@@ -320,6 +320,16 @@ public partial class PlayerInstance(PlayerData data)
                     avatarData.CurrentHp = 2000;
             }
         }
+		// --- 【修改点 2】 ---
+    // 登录时同步已解锁的配方给客户端，让合成台解锁
+    if (Data.UnlockedRecipes.Count > 0)
+    {
+        foreach (var recipeId in Data.UnlockedRecipes)
+        {
+            // 利用 UseItemScRsp 协议告知客户端此配方已激活
+            await SendPacket(new PacketUseItemScRsp(Retcode.RetSucc, 0, 0, null, (uint)recipeId));
+        }
+    }
         this.ActivityManager?.UpdateLoginDays();
         await LoadScene(Data.PlaneId, Data.FloorId, Data.EntryId, Data.Pos!, Data.Rot!, false);
         if (SceneInstance == null) await EnterScene(2000101, 0, false);

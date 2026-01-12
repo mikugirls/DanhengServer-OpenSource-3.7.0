@@ -27,18 +27,25 @@ public class ShopService(PlayerInstance player) : BasePlayerManager(player)
                 if (item != null) items.Add(item);
             }
         }
-        else
+       else
         {
             var item = await Player.InventoryManager!.AddItem(itemConfig.ID, count, false);
             if (item != null)
             {
-                if (GameData.ItemUseDataData.TryGetValue(item.ItemId, out var useData) && useData.IsAutoUse)
+                // 获取物品配置以判断类型
+                GameData.ItemConfigData.TryGetValue(item.ItemId, out var subItemConfig);
+
+                // --- 修改这里：如果是自动使用物品，且“不是”配方，才自动用掉 ---
+                if (GameData.ItemUseDataData.TryGetValue(item.ItemId, out var useData) && 
+                    useData.IsAutoUse && 
+                    subItemConfig?.ItemSubType != ItemSubTypeEnum.Formula) 
                 {
                     var res = await Player.InventoryManager!.UseItem(item.ItemId);
                     if (res.returnItems != null) items.AddRange(res.returnItems);
                 }
                 else
                 {
+                    // 配方或非自动使用物品，直接进入返回列表（即进入背包）
                     items.Add(item);
                 }
             }
