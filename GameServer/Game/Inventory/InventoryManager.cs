@@ -47,7 +47,7 @@ public class InventoryManager(PlayerInstance player) : BasePlayerManager(player)
         if (notify) await Player.SendPacket(new PacketScenePlaneEventScNotify(items));
     }
 
-    public async ValueTask<ItemData?> AddItem(int itemId, int count, bool notify = true, int rank = 1, int level = 1,
+  public async ValueTask<ItemData?> AddItem(int itemId, int count, bool notify = true, int rank = 1, int level = 1,
         bool sync = true, bool returnRaw = false)
     {
         GameData.ItemConfigData.TryGetValue(itemId, out var itemConfig);
@@ -58,16 +58,13 @@ public class InventoryManager(PlayerInstance player) : BasePlayerManager(player)
         switch (itemConfig.ItemMainType)
         {
             case ItemMainTypeEnum.Equipment:
-                if (Data.EquipmentItems.Count + 1 > GameConstants.INVENTORY_MAX_EQUIPMENT) // get the max equipment
+                if (Data.EquipmentItems.Count + 1 > GameConstants.INVENTORY_MAX_EQUIPMENT)
                 {
                     await Player.SendPacket(new PacketRetcodeNotify(Retcode.RetEquipmentExceedLimit));
                     break;
                 }
-
                 itemData = await PutItem(itemId, 1, rank, level: level, uniqueId: ++Data.NextUniqueId);
-
                 if (itemConfig.Rarity == ItemRarityEnum.SuperRare)
-                    // add development
                     Player.FriendRecordData!.AddAndRemoveOld(new FriendDevelopmentInfoPb
                     {
                         DevelopmentType = DevelopmentType.DevelopmentUnlockEquipment,
@@ -77,21 +74,11 @@ public class InventoryManager(PlayerInstance player) : BasePlayerManager(player)
             case ItemMainTypeEnum.Usable:
                 switch (itemConfig.ItemSubType)
                 {
-                    case ItemSubTypeEnum.HeadIcon:
-                        Player.PlayerUnlockData!.HeadIcons.Add(itemId);
-                        break;
-                    case ItemSubTypeEnum.ChatBubble:
-                        Player.PlayerUnlockData!.ChatBubbles.Add(itemId);
-                        break;
-                    case ItemSubTypeEnum.PhoneTheme:
-                        Player.PlayerUnlockData!.PhoneThemes.Add(itemId);
-                        break;
-                    case ItemSubTypeEnum.PersonalCard:
-                        Player.PlayerUnlockData!.PersonalCards.Add(itemId);
-                        break;
-                    case ItemSubTypeEnum.PhoneCase:
-                        Player.PlayerUnlockData!.PhoneCases.Add(itemId);
-                        break;
+                    case ItemSubTypeEnum.HeadIcon: Player.PlayerUnlockData!.HeadIcons.Add(itemId); break;
+                    case ItemSubTypeEnum.ChatBubble: Player.PlayerUnlockData!.ChatBubbles.Add(itemId); break;
+                    case ItemSubTypeEnum.PhoneTheme: Player.PlayerUnlockData!.PhoneThemes.Add(itemId); break;
+                    case ItemSubTypeEnum.PersonalCard: Player.PlayerUnlockData!.PersonalCards.Add(itemId); break;
+                    case ItemSubTypeEnum.PhoneCase: Player.PlayerUnlockData!.PhoneCases.Add(itemId); break;
                     case ItemSubTypeEnum.AvatarSkin:
                         var avatarId = GameData.AvatarSkinData[itemId].AvatarID;
                         if (!Player.PlayerUnlockData!.Skins.TryGetValue(avatarId, out var value))
@@ -99,7 +86,6 @@ public class InventoryManager(PlayerInstance player) : BasePlayerManager(player)
                             value = [];
                             Player.PlayerUnlockData.Skins[avatarId] = value;
                         }
-
                         value.Add(itemId);
                         await Player.SendPacket(new PacketUnlockAvatarSkinScNotify(itemId));
                         break;
@@ -111,67 +97,35 @@ public class InventoryManager(PlayerInstance player) : BasePlayerManager(player)
                         itemData = await PutItem(itemId, count);
                         break;
                 }
-
-                itemData ??= new ItemData
-                {
-                    ItemId = itemId,
-                    Count = count
-                };
+                itemData ??= new ItemData { ItemId = itemId, Count = count };
                 break;
             case ItemMainTypeEnum.Relic:
-                //I dont think one player can have more than max count of relic until i see a player get 50000 relic and the client crashed :(
-                if (Data.RelicItems.Count + 1 > GameConstants.INVENTORY_MAX_RELIC) // get the max relic
+                if (Data.RelicItems.Count + 1 > GameConstants.INVENTORY_MAX_RELIC)
                 {
                     await Player.SendPacket(new PacketRetcodeNotify(Retcode.RetRelicExceedLimit));
                     break;
                 }
-
                 (_, itemData) = await HandleRelic(itemId, ++Data.NextUniqueId, 0);
                 break;
             case ItemMainTypeEnum.Virtual:
                 var actualCount = 0;
                 switch (itemConfig.ID)
                 {
-                    case 1:
-                        Player.Data.Hcoin += count;
-                        actualCount = Player.Data.Hcoin;
-                        break;
-                    case 2:
-                        Player.Data.Scoin += count;
-                        actualCount = Player.Data.Scoin;
-                        break;
-                    case 3:
-                        Player.Data.Mcoin += count;
-                        actualCount = Player.Data.Mcoin;
-                        break;
-                    case 11:
-                        Player.Data.Stamina += count;
-                        actualCount = Player.Data.Stamina;
-                        break;
-                    case 22:
-                        Player.Data.Exp += count;
-                        Player.OnAddExp();
-                        actualCount = Player.Data.Exp;
-                        break;
-                    case 32:
-                        Player.Data.TalentPoints += count;
-                        // TODO : send VirtualItemPacket instead of PlayerSyncPacket
-                        break;
+                    case 1: Player.Data.Hcoin += count; actualCount = Player.Data.Hcoin; break;
+                    case 2: Player.Data.Scoin += count; actualCount = Player.Data.Scoin; break;
+                    case 3: Player.Data.Mcoin += count; actualCount = Player.Data.Mcoin; break;
+                    case 11: Player.Data.Stamina += count; actualCount = Player.Data.Stamina; break;
+                    case 22: Player.Data.Exp += count; Player.OnAddExp(); actualCount = Player.Data.Exp; break;
+                    case 32: Player.Data.TalentPoints += count; break;
                 }
-
                 if (count != 0)
                 {
-                    await Player.SendPacket(new PacketPlayerSyncScNotify(Player.ToProto()));
-                    itemData = new ItemData
-                    {
-                        ItemId = itemId,
-                        Count = actualCount
-                    };
+                    // 核心修改：仅在显式要求同步时同步 Player.ToProto()，防止刷包卡顿
+                    if (sync) await Player.SendPacket(new PacketPlayerSyncScNotify(Player.ToProto()));
+                    itemData = new ItemData { ItemId = itemId, Count = actualCount };
                 }
-
                 break;
             case ItemMainTypeEnum.AvatarCard:
-                // add avatar
                 var avatar = Player.AvatarManager?.GetFormalAvatar(itemId);
                 if (avatar != null)
                 {
@@ -182,9 +136,8 @@ public class InventoryManager(PlayerInstance player) : BasePlayerManager(player)
                 else
                 {
                     await Player.AddAvatar(itemId, sync, notify);
-                    await AddItem(itemId + 200000, 1, false);
+                    await AddItem(itemId + 200000, 1, false, sync: false); // 递归调用时静默
                 }
-
                 break;
             case ItemMainTypeEnum.Mission:
                 itemData = await PutItem(itemId, count);
@@ -194,14 +147,21 @@ public class InventoryManager(PlayerInstance player) : BasePlayerManager(player)
                 break;
         }
 
-        ItemData? clone = null;
-        if (itemData == null) return returnRaw ? itemData : clone ?? itemData;
+        if (itemData == null) return returnRaw ? itemData : null;
 
-        clone = itemData.Clone();
+        ItemData clone = itemData.Clone();
+        
+        // 核心修改：严格判断 sync 标志。
+        // 当 HandleReward 或其他批量方法调用此处时，sync 为 false，此处将不发包。
         if (sync)
             await Player.SendPacket(new PacketPlayerSyncScNotify(itemData));
+            
         clone.Count = count;
-        if (notify) await Player.SendPacket(new PacketScenePlaneEventScNotify(clone));
+        
+        // 核心修改：严格判断 notify 标志。
+        // 防止在已有全屏 UI 的界面弹出 PlaneEventScNotify 弹窗导致点击失效。
+        if (notify) 
+            await Player.SendPacket(new PacketScenePlaneEventScNotify(clone));
 
         Player.MissionManager?.HandleFinishType(MissionFinishTypeEnum.GetItem, itemData.ToProto());
 
@@ -304,30 +264,16 @@ public class InventoryManager(PlayerInstance player) : BasePlayerManager(player)
                     Data.MaterialItems.Remove(item);
                     item.Count = 0;
                 }
-
                 itemData = item;
                 break;
             case ItemMainTypeEnum.Virtual:
                 switch (itemConfig.ID)
                 {
-                    case 1:
-                        Player.Data.Hcoin -= count;
-                        itemData = new ItemData { ItemId = itemId, Count = count };
-                        break;
-                    case 2:
-                        Player.Data.Scoin -= count;
-                        itemData = new ItemData { ItemId = itemId, Count = count };
-                        break;
-                    case 3:
-                        Player.Data.Mcoin -= count;
-                        itemData = new ItemData { ItemId = itemId, Count = count };
-                        break;
-                    case 32:
-                        Player.Data.TalentPoints -= count;
-                        itemData = new ItemData { ItemId = itemId, Count = count };
-                        break;
+                    case 1: Player.Data.Hcoin -= count; itemData = new ItemData { ItemId = itemId, Count = count }; break;
+                    case 2: Player.Data.Scoin -= count; itemData = new ItemData { ItemId = itemId, Count = count }; break;
+                    case 3: Player.Data.Mcoin -= count; itemData = new ItemData { ItemId = itemId, Count = count }; break;
+                    case 32: Player.Data.TalentPoints -= count; itemData = new ItemData { ItemId = itemId, Count = count }; break;
                 }
-
                 if (sync && itemData != null) await Player.SendPacket(new PacketPlayerSyncScNotify(Player.ToProto()));
                 break;
             case ItemMainTypeEnum.Equipment:
@@ -346,6 +292,7 @@ public class InventoryManager(PlayerInstance player) : BasePlayerManager(player)
                 break;
         }
 
+        // 核心修改：判断 sync 标志
         if (itemData != null && sync) await Player.SendPacket(new PacketPlayerSyncScNotify(itemData));
 
         Player.MissionManager?.HandleFinishType(MissionFinishTypeEnum.UseItem, new ItemData
@@ -444,24 +391,35 @@ public class InventoryManager(PlayerInstance player) : BasePlayerManager(player)
         }
     }
 
-    public async ValueTask<List<ItemData>> HandleReward(int rewardId, bool notify = false, bool sync = true)
+   public async ValueTask<List<ItemData>> HandleReward(int rewardId, bool notify = false, bool sync = true)
     {
         GameData.RewardDataData.TryGetValue(rewardId, out var rewardData);
         if (rewardData == null) return [];
         List<ItemData> items = [];
 
+        // 核心修改：内部循环 AddItem 时强制设为 false。
+        // 这样即使你外面没改调用处，里面也不会再疯狂发通知包了。
         foreach (var item in rewardData.GetItems())
         {
-            var i = await AddItem(item.Item1, item.Item2, notify, sync: false);
+            var i = await AddItem(item.Item1, item.Item2, notify: false, sync: false);
             if (i != null) items.Add(i);
         }
 
-        if (sync)
-            await Player.SendPacket(new PacketPlayerSyncScNotify(items));
+        // 处理硬币/星琼 (同样强制静默)
+        var hCoin = await AddItem(1, rewardData.Hcoin, notify: false, sync: false);
+        if (hCoin != null) items.Add(hCoin);
 
-        var hCoin = await AddItem(1, rewardData.Hcoin, notify, sync: false);
-        if (hCoin != null)
-            items.Add(hCoin);
+        // 统一在逻辑出口处同步一次数据 (保证客户端能收到数据更新)
+        if (sync && items.Count > 0)
+        {
+            await Player.SendPacket(new PacketPlayerSyncScNotify(items));
+        }
+
+        // 统一在最后弹窗一次 (如果是 notify=true 的话)
+        if (notify && items.Count > 0)
+        {
+            await Player.SendPacket(new PacketScenePlaneEventScNotify(items));
+        }
 
         return items;
     }

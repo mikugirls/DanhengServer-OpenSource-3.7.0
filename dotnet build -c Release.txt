@@ -1,1 +1,17 @@
 git fetch --all && git reset --hard origin/main
+# 1. 初始化（如果还没初始化过）
+git init
+
+# 2. 将所有改动加入暂存区
+git add .
+
+# 3. 提交本地存档并记录改动日志
+git commit -m "feat: 修复巡星之礼签到系统，支持10014/10018序列，支持10倍奖励及ID纠偏逻辑"
+
+# 4. 如果你有远程仓库（如 GitHub/Gitee），推送到服务器
+# git remote add origin <你的仓库地址>
+# git push -u origin main
+
+
+git tag 1.11 -m "巡星之礼完美修复版：支持10倍奖励、ID自动纠偏、本地Config读取"
+git push origin 1.11
