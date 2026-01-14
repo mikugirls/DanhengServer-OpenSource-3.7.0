@@ -124,51 +124,45 @@ public class RogueManager(PlayerInstance player) : BasePlayerManager(player)
         { 7, [13, 14] }, // 世界9: 茨冈尼亚(13), 出云(14)
     };
 
-    public async ValueTask GrantImmersiveRewards()
+   public async ValueTask GrantImmersiveRewards()
+{
+    var instance = RogueInstance;
+    if (instance == null) return;
+
+    int progress = instance.AreaExcel.AreaProgress;
+    int rogueDifficulty = instance.AreaExcel.Difficulty;
+    int worldLevel = Player.Data.WorldLevel;
+
+    // 决定品质档位 (3-6)
+    int rank = 4; // 默认紫色
+    if (rogueDifficulty >= 4) rank = 6;
+    else if (rogueDifficulty == 3) rank = 5;
+
+    if (!WorldToRelicSets.TryGetValue(progress, out var setIds))
+        setIds = [01, 02];
+
+    // 收集要发放的 ID
+    List<int> itemIds = new(); // 这里用 int 列表，避免后续转换麻烦
+    foreach (var setId in setIds)
     {
-        var instance = RogueInstance;
-        if (instance == null) return;
-
-        // 1. 获取基础数据
-        int progress = instance.AreaExcel.AreaProgress; // 世界几
-        int rogueDifficulty = instance.AreaExcel.Difficulty; // 模拟宇宙难度 (I-V)
-        int worldLevel = Player.Data.WorldLevel; // 玩家均衡等级 (0-6)
-
-        // 2. 决定遗器品质 (Rank)
-        // 逻辑：即使均衡等级高，如果打的是低难度世界，品质也会受限
-        // 这里我们可以根据 rogueDifficulty 来确定 ID 的首位 (3-6)
-        int rank;
-        if (rogueDifficulty >= 4) rank = 6;      // 难度4以上必给金 (63xxx)
-        else if (rogueDifficulty == 3) rank = 5; // 难度3给高概率金/紫 (53xxx)
-        else rank = 4;                           // 低难度给紫 (43xxx)
-
-        // 3. 获取对应世界的套装
-        if (!WorldToRelicSets.TryGetValue(progress, out var setIds))
-            setIds = [01, 02];
-
-        List<uint> itemIds = new();
-
-        // 4. 发放基础奖励 (球和绳)
-        foreach (var setId in setIds)
-        {
-            itemIds.Add((uint)((rank * 10000) + 3000 + (setId * 10) + 5)); // 球
-            itemIds.Add((uint)((rank * 10000) + 3000 + (setId * 10) + 6)); // 绳
-        }
-
-        // 5. 根据“难度”和“均衡等级”补发额外掉落 (模拟官服双金)
-        // 比如：难度5 且 均衡等级6，额外多给 1-2 个随机部位
-        if (rogueDifficulty >= 4 && worldLevel >= 5)
-        {
-            int extraSet = setIds[Random.Shared.Next(setIds.Length)];
-            itemIds.Add((uint)((rank * 10000) + 3000 + (extraSet * 10) + Random.Shared.Next(5, 7)));
-        }
-
-        // 执行发放
-        foreach (var id in itemIds)
-        {
-            await Player.InventoryManager!.AddItem(id, 1, notify: true);
-        }
+        itemIds.Add((rank * 10000) + 3000 + (setId * 10) + 5); // 球
+        itemIds.Add((rank * 10000) + 3000 + (setId * 10) + 6); // 绳
     }
+
+    // 难度加成
+    if (rogueDifficulty >= 4 && worldLevel >= 5)
+    {
+        int extraSet = setIds[Random.Shared.Next(setIds.Length)];
+        itemIds.Add((rank * 10000) + 3000 + (extraSet * 10) + Random.Shared.Next(5, 7));
+    }
+
+    // 执行发放
+    foreach (var id in itemIds)
+    {
+        // 确保这里调用的是 AddItem，并且参数类型匹配
+        await Player.InventoryManager!.AddItem(id, 1, notify: true);
+    }
+}
     public BaseRogueInstance? GetRogueInstance()
     {
         if (RogueInstance != null)
