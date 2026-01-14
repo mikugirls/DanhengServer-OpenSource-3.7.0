@@ -74,42 +74,43 @@ public partial class PlayerInstance
                 }
 
                 break;
-            // --- 新增：肉鸽奖励物件（沉浸器）逻辑 ---
             case PropTypeEnum.PROP_ROGUE_REWARD_OBJECT:
-                // 校验 ID 是否为沉浸器 (8001)
-                if (prop.Excel.ID == 8001)
+    		if (prop.Excel.ID == 8001)
+    		{
+        	var rogueInstance = RogueManager?.GetRogueInstance();
+        	if (rogueInstance != null)
+        	{
+            if (Data.ImmersiveArtifact >= 1)
+            {
+                // --- 动态获取该世界、该难度对应的 RewardId ---
+                int rewardId = RogueManager!.GetImmersiveRewardId();
+
+                if (rewardId <= 0) 
                 {
-                    var rogueInstance = RogueManager.GetRogueInstance();
-                    if (rogueInstance != null)
-                    {
-                        // 1. 资产校验：是否有沉浸券 (ID 33)
-                        if (Data.ImmersiveArtifact >= 1)
-                        {
-                            // A. 扣除 1 张券
-                            Data.ImmersiveArtifact -= 1;
-                            EggLink.DanhengServer.Database.DatabaseHelper.ToSaveUidList.SafeAdd(Uid);
-
-                            // B. 发放奖励 (此处建议根据当前 SiteId 动态匹配)
-                            int rewardId = 1001; 
-                            await InventoryManager!.HandleReward(rewardId, notify: true);
-
-                            // C. 核心：同步右上角 UI 的券余额 (让 1 变 0)
-                            await SendPacket(new PacketSyncRogueCommonVirtualItemInfoScNotify(rogueInstance));
-
-                            // D. 状态更新：设为 Open (1) 让球熄灭
-                            await prop.SetState(PropStateEnum.Open);
-                            await SendPacket(new PacketGroupStateChangeScNotify(Data.EntryId, prop.GroupId, prop.State));
-                        }
-                        else
-                        {
-                            // 余额不足：弹出错误提示
-                            await SendPacket(new PacketRetcodeNotify(Retcode.RetItemNotEnough));
-                            // 保持球体激活，允许玩家稍后再点
-                            await prop.SetState(PropStateEnum.WaitActive);
-                        }
-                    }
+                    // 如果没配置奖励，给个保底或者跳出，防止空发
+                    rewardId = 21001; // 假设的一个保底 ID
                 }
-                break;    
+
+                // 扣券逻辑
+                Data.ImmersiveArtifact -= 1;
+                EggLink.DanhengServer.Database.DatabaseHelper.ToSaveUidList.SafeAdd(Uid);
+
+                // 发放动态奖励
+                await InventoryManager!.HandleReward(rewardId, notify: true);
+
+                // 同步 UI 和 状态
+                await SendPacket(new PacketSyncRogueCommonVirtualItemInfoScNotify(rogueInstance));
+                await prop.SetState(PropStateEnum.Open);
+                await SendPacket(new PacketGroupStateChangeScNotify(Data.EntryId, prop.GroupId, prop.State));
+                }
+            	else
+            	{
+                await SendPacket(new PacketRetcodeNotify(Retcode.RetItemNotEnough));
+                await prop.SetState(PropStateEnum.WaitActive);
+                }
+        		}
+    			}
+                break;
             case PropTypeEnum.PROP_DESTRUCT:
                 if (newState == PropStateEnum.Closed) await prop.SetState(PropStateEnum.Open);
                 break;
