@@ -152,39 +152,48 @@ public class EntityMonster(
         if (CustomStageId > 0) return CustomStageId;
         return Info.EventID;
     }
-
     public async ValueTask<List<ItemData>> Kill(bool sendPacket = true)
     {
         IsAlive = false;
 
+        // 1. 处理掉落逻辑
         GameData.MonsterDropData.TryGetValue(MonsterData.ID * 10 + Scene.Player.Data.WorldLevel, out var dropData);
         if (dropData == null) return [];
         var dropItems = dropData.CalculateDrop();
         await Scene.Player.InventoryManager!.AddItems(dropItems, sendPacket);
 
-        // TODO: Rogue support
-		// --- 新增：解锁同组宝箱 ---
-        var relatedChests = Scene.Entities.Values
-        .OfType<EntityProp>()
-        .Where(p => p.GroupId == this.GroupId);
+        // --- 核心修复：黑名单判定 + 类型判定 ---
+        // 只有在非模拟宇宙模式下，才尝试解锁同组宝箱，彻底解决“门进不去”的 Bug
+        if (Scene.GameModeType != GameModeTypeEnum.RogueExplore &&   // 5
+            Scene.GameModeType != GameModeTypeEnum.RogueChallenge && // 6
+            Scene.GameModeType != GameModeTypeEnum.RogueAeonRoom &&  // 13
+            Scene.GameModeType != GameModeTypeEnum.ChessRogue &&      // 16
+            Scene.GameModeType != GameModeTypeEnum.TournRogue &&      // 17
+            Scene.GameModeType != GameModeTypeEnum.MagicRogue)       // 20
+        {
+            // 获取同组的所有物件
+            var relatedProps = Scene.Entities.Values
+                .OfType<EntityProp>()
+                .Where(p => p.GroupId == this.GroupId);
 
-   foreach (var prop in relatedProps)
-{
-    // 1. 如果这个物体是 RogueProp（即它是模拟宇宙特有的传送门/物件）
-    // 我们绝对不要通过这种方式改它的状态，因为它有自己的脚本逻辑
-    if (prop is RogueProp) 
-    {
-        continue; 
-    }
+            foreach (var prop in relatedProps)
+            {
+                // 双重保险：即便是大世界，如果检测到是肉鸽属性的门，也跳过
+                if (prop is RogueProp) continue;
 
-    // 2. 如果是大世界的普通 EntityProp（比如宝箱）
-    // 执行解锁逻辑，确保大世界强敌挑战正常
-    await prop.SetState(PropStateEnum.ChestClosed);
-}
-    // ----------------------
-        // call mission handler
+                // 执行解锁逻辑，确保大世界、城镇、活动挑战正常
+                await prop.SetState(PropStateEnum.ChestClosed);
+            }
+        }
+        // ---------------------------------------
+
+        // 2. 任务处理
         await Scene.Player.MissionManager!.HandleFinishType(MissionFinishTypeEnum.KillMonster, this);
+        
+        // 3. 移除实体
         await Scene.RemoveEntity(this);
+        
         return dropItems;
     }
+   
 }
