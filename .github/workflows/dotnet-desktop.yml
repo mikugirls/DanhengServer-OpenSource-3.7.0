@@ -1,0 +1,39 @@
+name: DanhengServer Windows Build
+
+on:
+  push:
+    branches: [ "3.7.0" ] # 对应你当前的 3.7.0 分支
+  pull_request:
+    branches: [ "3.7.0" ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    # 安装 .NET 9 SDK
+    - name: Install .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 9.0.x 
+
+    # 还原依赖
+    - name: Restore dependencies
+      run: dotnet restore
+
+    # 编译 Release 版本
+    - name: Build
+      run: dotnet build --configuration Release --no-restore
+
+    # 上传编译产物
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: DanhengServer-Windows-Release
+        # 这里的路径根据你的项目名称修改，通常是 bin/Release/net9.0/
+        path: Program/bin/Release/net9.0/
