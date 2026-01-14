@@ -12,6 +12,8 @@ using EggLink.DanhengServer.Kcp;
 using EggLink.DanhengServer.Proto;
 using EggLink.DanhengServer.Util;
 using static EggLink.DanhengServer.GameServer.Plugin.Event.PluginEvent;
+using EggLink.DanhengServer.GameServer.Server.Packet.Send.Rogue; // 对应 PacketSyncRogueCommonVirtualItemInfoScNotify
+using EggLink.DanhengServer.GameServer.Server.Packet.Send.Scene; // 对应 PacketRetcodeNotify (如果它在这个目录下)
 
 namespace EggLink.DanhengServer.GameServer.Game.Player;
 
