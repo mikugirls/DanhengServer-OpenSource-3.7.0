@@ -81,10 +81,10 @@ public partial class PlayerInstance
                     if (rogueInstance != null)
                     {
                         // 1. 资产校验：是否有沉浸券 (ID 33)
-                        if (Data.ImmersiveArtifact >= 1)
+                        if (Player.Data.ImmersiveArtifact >= 1)
                         {
                             // A. 扣除 1 张券
-                            Data.ImmersiveArtifact -= 1;
+                            Player.Data.ImmersiveArtifact -= 1;
                             EggLink.DanhengServer.Database.DatabaseHelper.ToSaveUidList.SafeAdd(Uid);
 
                             // B. 发放奖励 (此处建议根据当前 SiteId 动态匹配)
