@@ -194,35 +194,53 @@ public class RogueInstance : BaseRogueInstance
 
     #region Handlers
 
-    public override void OnBattleStart(BattleInstance battle)
+   public override void OnBattleStart(BattleInstance battle)
+{
+    base.OnBattleStart(battle);
+    if (CurRoom == null) return;
+
+    // 1. 准备基础数据
+    int progress = AreaExcel.AreaProgress; 
+    int difficulty = AreaExcel.Difficulty; 
+    
+    // 2. 动态计算目标等级 -> 给到 CustomLevel
+    // 这样 ToProto 会把这个正常的数字 (如 35) 塞进 MonsterParam.Level
+    int targetLevel = progress * 10 + (difficulty - 1) * 10 + 5 + (CurReachedRoom / 2);
+    battle.CustomLevel = targetLevel; 
+
+    // 3. 确定怪物组 ID (targetStageId)
+    int targetStageId = 0;
+    if (CurRoom.Excel.RogueRoomType == 7) 
     {
-        base.OnBattleStart(battle);
-
-        if (CurRoom == null) return;
-
-        int progress = AreaExcel.AreaProgress; 
-        int difficulty = AreaExcel.Difficulty; 
-        
-        // 动态计算怪物等级，同步场景与战斗
-        uint targetLevel = (uint)(progress * 10 + (difficulty - 1) * 10 + 5 + (CurReachedRoom / 2));
-        battle.Level = targetLevel;
-
-        if (CurRoom.Excel.RogueRoomType == 7) 
+        // 这里的计算公式生成 300101 这种 StageID
+        targetStageId = (int)((progress * 100000) + (difficulty * 100) + 1);
+    }
+    else 
+    {
+        int mapId = progress * 100 + difficulty;
+        if (GameData.RogueMapData.TryGetValue(mapId, out var mapData))
         {
-            battle.CustomLevel = (uint)((progress * 100000) + (difficulty * 100) + 1);
-        }
-        else 
-        {
-            int mapId = progress * 100 + difficulty;
-            if (GameData.RogueMapData.TryGetValue(mapId, out var mapData))
+            if (mapData.TryGetValue(CurRoom.SiteId, out var mapInfo) && mapInfo.LevelList.Count > 0)
             {
-                if (mapData.TryGetValue(CurRoom.SiteId, out var mapInfo) && mapInfo.LevelList.Count > 0)
-                {
-                    battle.CustomLevel = mapInfo.LevelList.RandomElement();
-                }
+                targetStageId = mapInfo.LevelList.RandomElement();
             }
         }
     }
+
+    // 4. 重要：同步更新 Stage 数据 (确保波次里有正确的怪)
+    if (targetStageId > 0)
+    {
+        battle.StageId = targetStageId; // 设置主 ID
+        if (GameData.StageConfigData.TryGetValue(targetStageId, out var stageConfig))
+        {
+            // 必须重置 Stages 列表。
+            // 这样 ToProto 在执行 Stages.Select 时，生成的每一波 SceneMonsterWave 
+            // 都会带有正确的 BattleStageId (Tag 3)
+            battle.Stages.Clear(); 
+            battle.Stages.Add(stageConfig); 
+        }
+    }
+}
 
     public override async ValueTask OnBattleEnd(BattleInstance battle, PVEBattleResultCsReq req)
     {
