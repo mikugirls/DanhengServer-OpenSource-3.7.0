@@ -1,4 +1,4 @@
-﻿using EggLink.DanhengServer.Data;
+using EggLink.DanhengServer.Data;
 using EggLink.DanhengServer.Data.Custom;
 using EggLink.DanhengServer.Data.Excel;
 using EggLink.DanhengServer.Enums.Rogue;
@@ -13,7 +13,12 @@ using EggLink.DanhengServer.Util;
 
 namespace EggLink.DanhengServer.GameServer.Game.Rogue;
 
-public RogueInstance(RogueAreaConfigExcel areaExcel, RogueAeonExcel aeonExcel, PlayerInstance player) : base(player,
+// --- 修复点 1: 补齐缺失的类定义声明 ---
+public class RogueInstance : BaseRogueInstance
+{
+    #region Initialization
+
+    public RogueInstance(RogueAreaConfigExcel areaExcel, RogueAeonExcel aeonExcel, PlayerInstance player) : base(player,
         RogueSubModeEnum.CosmosRogue, aeonExcel.RogueBuffType)
     {
         AreaExcel = areaExcel;
@@ -23,11 +28,11 @@ public RogueInstance(RogueAreaConfigExcel areaExcel, RogueAeonExcel aeonExcel, P
         CurLineup = player.LineupManager!.GetCurLineup()!;
         EventManager = new RogueEventManager(player, this);
 
-        // --- 核心修复：将 areaId 传入每个房间实例以区分不同世界的 BOSS ---
+        // --- 核心修复：传入整个 areaExcel 以便同步等级和世界 ID ---
         foreach (var item in areaExcel.RogueMaps.Values)
         {
-            // 初始化房间，传入 Site 配置和当前世界 ID
-            RogueRooms.Add(item.SiteID, new RogueRoomInstance(item, areaExcel.RogueAreaID));
+            // 注意：这里需要配合你修改过的 RogueRoomInstance 构造函数
+            RogueRooms.Add(item.SiteID, new RogueRoomInstance(item, areaExcel));
             if (item.IsStart) StartSiteId = item.SiteID;
         }
 
@@ -42,7 +47,6 @@ public RogueInstance(RogueAreaConfigExcel areaExcel, RogueAeonExcel aeonExcel, P
     }
 
     #endregion
-   
 
     #region Properties
 
@@ -61,15 +65,14 @@ public RogueInstance(RogueAreaConfigExcel areaExcel, RogueAeonExcel aeonExcel, P
 
     public override async ValueTask RollBuff(int amount)
     {
-        // 区分精英/BOSS房(6)与其他房间的 Buff 抽取概率
         if (CurRoom!.Excel.RogueRoomType == 6)
         {
-            await RollBuff(amount, 100003, 2); // 奖励池
+            await RollBuff(amount, 100003, 2); 
             await RollMiracle(1);
         }
         else
         {
-            await RollBuff(amount, 100005); // 普通池
+            await RollBuff(amount, 100005); 
         }
     }
 
@@ -147,23 +150,17 @@ public RogueInstance(RogueAreaConfigExcel areaExcel, RogueAeonExcel aeonExcel, P
         var prevRoom = CurRoom;
         if (prevRoom != null)
         {
-            // 校验路径合法性
             if (!prevRoom.NextSiteIds.Contains(siteId)) return null;
-            
-            // 标记上一个房间为完成状态
             prevRoom.Status = RogueRoomStatus.Finish;
             await Player.SendPacket(new PacketSyncRogueMapRoomScNotify(prevRoom, AreaExcel.MapId));
         }
 
-        // 进入新房间并标记为进行中
         CurReachedRoom++;
         CurRoom = RogueRooms[siteId];
         CurRoom.Status = RogueRoomStatus.Play;
 
-        // 加载场景配置
         await Player.EnterScene(CurRoom.Excel.MapEntrance, 0, false);
 
-        // 处理传送点偏移
         var anchor = Player.SceneInstance!.FloorInfo?.GetAnchorInfo(CurRoom.Excel.GroupID, 1);
         if (anchor != null)
         {
@@ -171,7 +168,6 @@ public RogueInstance(RogueAreaConfigExcel areaExcel, RogueAeonExcel aeonExcel, P
             Player.Data.Rot = anchor.ToRotationProto();
         }
 
-        // 同步当前点位状态
         await Player.SendPacket(new PacketSyncRogueMapRoomScNotify(CurRoom, AreaExcel.MapId));
 
         EventManager?.OnNextRoom();
@@ -198,50 +194,35 @@ public RogueInstance(RogueAreaConfigExcel areaExcel, RogueAeonExcel aeonExcel, P
 
     #region Handlers
 
- public override void OnBattleStart(BattleInstance battle)
-{
-    base.OnBattleStart(battle);
-
-    if (CurRoom == null) return;
-
-    // --- 1. 动态计算怪物等级 (核心：解决你说的等级过高问题) ---
-    // 根据 AreaProgress (世界) 和 Difficulty (难度) 动态计算等级
-    int progress = AreaExcel.AreaProgress;   // 世界几 (如 3)
-    int difficulty = AreaExcel.Difficulty;     // 难度几 (如 1)
-    
-    // 公式建议：世界基准等级 + (难度-1) * 10 + 随房间进度微增
-    // 示例：世界3 难度1 -> 30 + 0 + (13/2) ≈ 36级
-    // 示例：世界3 难度2 -> 30 + 10 + (13/2) ≈ 46级
-    uint targetLevel = (uint)(progress * 10 + (difficulty - 1) * 10 + 5 + (CurReachedRoom / 2));
-    
-    // 强制设置战斗等级，这会覆盖配置表里的默认等级
-    battle.Level = targetLevel;
-
-    // --- 2. 决定怪物组 (CustomLevel) ---
-    if (CurRoom.Excel.RogueRoomType == 7) 
+    public override void OnBattleStart(BattleInstance battle)
     {
-        // BOSS 房：使用世界+难度的组合 ID
-        battle.CustomLevel = (progress * 100000) + (difficulty * 100) + 1;
-    }
-    else 
-    {
-        // 普通房：根据 MapId 获取怪物列表
-        // 确保 MapId 考虑了难度 (progress * 100 + difficulty)
-        int mapId = progress * 100 + difficulty;
+        base.OnBattleStart(battle);
+
+        if (CurRoom == null) return;
+
+        int progress = AreaExcel.AreaProgress; 
+        int difficulty = AreaExcel.Difficulty; 
         
-        if (GameData.RogueMapData.TryGetValue(mapId, out var mapData))
+        // 动态计算怪物等级，同步场景与战斗
+        uint targetLevel = (uint)(progress * 10 + (difficulty - 1) * 10 + 5 + (CurReachedRoom / 2));
+        battle.Level = targetLevel;
+
+        if (CurRoom.Excel.RogueRoomType == 7) 
         {
-            if (mapData.TryGetValue(CurRoom.SiteId, out var mapInfo) && mapInfo.LevelList.Count > 0)
+            battle.CustomLevel = (uint)((progress * 100000) + (difficulty * 100) + 1);
+        }
+        else 
+        {
+            int mapId = progress * 100 + difficulty;
+            if (GameData.RogueMapData.TryGetValue(mapId, out var mapData))
             {
-                // 随机抽取一个怪物组合
-                battle.CustomLevel = mapInfo.LevelList.RandomElement();
+                if (mapData.TryGetValue(CurRoom.SiteId, out var mapInfo) && mapInfo.LevelList.Count > 0)
+                {
+                    battle.CustomLevel = mapInfo.LevelList.RandomElement();
+                }
             }
         }
     }
-    
-    // 调试打印：让你在服务器控制台看到当前的怪物强度
-    // Console.WriteLine($"[Rogue] 战斗开始: 世界{progress} 难度{difficulty} 房间进度{CurReachedRoom} -> 最终等级: {battle.Level}, 怪物组ID: {battle.CustomLevel}");
-}
 
     public override async ValueTask OnBattleEnd(BattleInstance battle, PVEBattleResultCsReq req)
     {
@@ -253,7 +234,6 @@ public RogueInstance(RogueAreaConfigExcel areaExcel, RogueAeonExcel aeonExcel, P
             return;
         }
 
-        // 如果没有后续路径，则判定为最终胜利
         if (CurRoom!.NextSiteIds.Count == 0)
         {
             IsWin = true;
@@ -280,7 +260,7 @@ public RogueInstance(RogueAreaConfigExcel areaExcel, RogueAeonExcel aeonExcel, P
             RogueLineupInfo = ToLineupInfo(),
             RogueBuffInfo = ToBuffInfo(),
             VirtualItemInfo = ToVirtualItemInfo(),
-            RogueMap = ToMapInfo(), // 核心地图同步协议
+            RogueMap = ToMapInfo(),
             ModuleInfo = new RogueModuleInfo
             {
                 ModuleIdList = { 1, 2, 3, 4, 5 }
@@ -298,7 +278,6 @@ public RogueInstance(RogueAreaConfigExcel areaExcel, RogueAeonExcel aeonExcel, P
 
     public RogueMapInfo ToMapInfo()
     {
-        // 关键：返回 AreaId 和 MapId 以便客户端渲染背景资源
         var proto = new RogueMapInfo
         {
             CurSiteId = (uint)(CurRoom?.SiteId ?? StartSiteId),
@@ -307,7 +286,6 @@ public RogueInstance(RogueAreaConfigExcel areaExcel, RogueAeonExcel aeonExcel, P
             MapId = (uint)AreaExcel.MapId
         };
 
-        // 将每个房间的随机 RoomId 和图标类型同步给前端
         foreach (var room in RogueRooms) 
             proto.RoomList.Add(room.Value.ToProto());
 
@@ -387,4 +365,4 @@ public RogueInstance(RogueAreaConfigExcel areaExcel, RogueAeonExcel aeonExcel, P
     }
 
     #endregion
-}
+} // --- 修复点 2: 确保类定义闭合 ---
