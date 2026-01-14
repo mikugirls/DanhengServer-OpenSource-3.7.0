@@ -168,13 +168,19 @@ public class EntityMonster(
         .OfType<EntityProp>()
         .Where(p => p.GroupId == this.GroupId);
 
-    foreach (var chest in relatedChests)
+   foreach (var prop in relatedProps)
+{
+    // 1. 如果这个物体是 RogueProp（即它是模拟宇宙特有的传送门/物件）
+    // 我们绝对不要通过这种方式改它的状态，因为它有自己的脚本逻辑
+    if (prop is RogueProp) 
     {
-        // 检查当前状态是否为锁定/关闭
-        // 这里的 PropStateEnum.Closed 或 Locked 视你的数据定义而定
-        // 如果怪打完了还是锁着的，我们就把它设为 Idle (通常对应 0，即可交互状态)
-        await chest.SetState(PropStateEnum.ChestClosed);
+        continue; 
     }
+
+    // 2. 如果是大世界的普通 EntityProp（比如宝箱）
+    // 执行解锁逻辑，确保大世界强敌挑战正常
+    await prop.SetState(PropStateEnum.ChestClosed);
+}
     // ----------------------
         // call mission handler
         await Scene.Player.MissionManager!.HandleFinishType(MissionFinishTypeEnum.KillMonster, this);
