@@ -280,10 +280,16 @@ public async ValueTask HandleTakeRogueScoreReward(TakeRogueScoreRewardCsReq req)
 
     public static RogueGetVirtualItemInfo ToVirtualItemProto()
     {
-        return new RogueGetVirtualItemInfo
-        {
-            // TODO: Implement
-        };
+       
+            return new RogueGetVirtualItemInfo
+    {
+        DKABGHHOODP = (uint)Player.Data.ImmersiveArtifact, // 沉浸券
+        TalentPoint = (uint)Player.Data.TalentPoints,      // 技能点
+        
+        // BILEOOPHJEF 可能是某种特殊的活动积分，暂时设为 0
+        BILEOOPHJEF = 0 
+    };
+        
     }
 
     public static RogueTalentInfoList ToTalentProto()
