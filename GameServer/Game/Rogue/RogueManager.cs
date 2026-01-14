@@ -278,7 +278,7 @@ public async ValueTask HandleTakeRogueScoreReward(TakeRogueScoreRewardCsReq req)
         };
     }
 
-    public static RogueGetVirtualItemInfo ToVirtualItemProto()
+    public RogueGetVirtualItemInfo ToVirtualItemProto()
     {
        
             return new RogueGetVirtualItemInfo
