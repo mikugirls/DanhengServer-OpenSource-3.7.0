@@ -13,11 +13,7 @@ using EggLink.DanhengServer.Util;
 
 namespace EggLink.DanhengServer.GameServer.Game.Rogue;
 
-public class RogueInstance : BaseRogueInstance
-{
-    #region Initialization
-
-    public RogueInstance(RogueAreaConfigExcel areaExcel, RogueAeonExcel aeonExcel, PlayerInstance player) : base(player,
+public RogueInstance(RogueAreaConfigExcel areaExcel, RogueAeonExcel aeonExcel, PlayerInstance player) : base(player,
         RogueSubModeEnum.CosmosRogue, aeonExcel.RogueBuffType)
     {
         AreaExcel = areaExcel;
@@ -46,6 +42,7 @@ public class RogueInstance : BaseRogueInstance
     }
 
     #endregion
+   
 
     #region Properties
 
