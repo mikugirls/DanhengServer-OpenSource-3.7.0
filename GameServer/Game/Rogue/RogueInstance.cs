@@ -30,13 +30,36 @@ public class RogueInstance : BaseRogueInstance
         CurLineup = player.LineupManager!.GetCurLineup()!;
         EventManager = new RogueEventManager(player, this);
 
-        // --- 核心修复：传入整个 areaExcel 以便同步等级和世界 ID ---
-        foreach (var item in areaExcel.RogueMaps.Values)
+       // --- 【核心修改开始】 ---
+        
+        // 1. 获取正确的 MapId (这是之前一直缺失的关键环节)
+        int mapId = GetMapIdFromAreaId(areaExcel.RogueAreaID);
+        
+        // 2. 容错逻辑：如果找不到特定 MapId (比如 201)，回退到基础版 (比如 200)
+        // 防止新出的难度还没有配地图数据导致崩服
+        if (!GameData.RogueMapData.ContainsKey(mapId))
         {
-            // 注意：这里需要配合你修改过的 RogueRoomInstance 构造函数
-            RogueRooms.Add(item.SiteID, new RogueRoomInstance(item, areaExcel));
-            if (item.IsStart) StartSiteId = item.SiteID;
+            // 尝试回退到整百 ID (e.g., 131 -> 101, 141 -> 200 ??? 这里的逻辑视具体数据而定)
+            // 根据你的数据，13x 都是 101，14x 是 20x。
+            // 简单处理：如果找不到，打个日志，不用硬回退，方便发现问题。
+            Console.WriteLine($"[Rogue Error] 找不到 MapId: {mapId} 的配置数据！");
         }
+
+        // 3. 加载房间
+        if (GameData.RogueMapData.TryGetValue(mapId, out var mapRooms))
+        {
+            foreach (var item in mapRooms.Values)
+            {
+                // 这里调用你刚刚修改好的 RogueRoomInstance 新构造函数
+                // 它会自动计算出正确的 Boss ID 和 MonsterLevel
+                var roomInstance = new RogueRoomInstance(item, areaExcel);
+                
+                RogueRooms.Add(item.SiteID, roomInstance);
+                
+                if (item.IsStart) StartSiteId = item.SiteID;
+            }
+        }
+        // --- 【核心修改结束】 ---
 
         // 初始化 Bonus 动作
         var action = new RogueActionInstance
@@ -140,7 +163,65 @@ public class RogueInstance : BaseRogueInstance
     #endregion
 
     #region Methods
+	// --- 把这个方法加到 RogueInstance 类里 ---
+    private int GetMapIdFromAreaId(int areaId)
+    {
+        // 世界 1 & 2
+        if (areaId == 100) return 1;
+        if (areaId == 110) return 2;
+        if (areaId == 120) return 3;
 
+        // 世界 3 (雅利洛) - Area 13x -> Map 101
+        if (areaId >= 130 && areaId < 140) return 101; 
+
+        // 世界 4 (史瓦罗) - Area 14x -> Map 200 + Difficulty
+        if (areaId >= 140 && areaId < 150)
+        {
+            int difficulty = areaId % 10; 
+            return 200 + difficulty; 
+        }
+
+        // 世界 5 (卡芙卡) - Area 15x -> Map 300 + Difficulty
+        if (areaId >= 150 && areaId < 160)
+        {
+            int difficulty = areaId % 10;
+            return 300 + difficulty;
+        }
+
+        // 世界 6 (可可利亚) - Area 16x -> Map 401 + Difficulty
+        if (areaId >= 160 && areaId < 170)
+        {
+            // 注意：Map 401 起步，不是 400
+            int difficulty = areaId % 10; 
+            return 401 + difficulty; // 如果难度1是160，那就是 401
+        }
+
+        // 世界 7 (玄鹿) - Area 17x -> Map 501 + Difficulty
+        if (areaId >= 170 && areaId < 180)
+        {
+            int difficulty = areaId % 10;
+            return 501 + difficulty;
+        }
+
+        // 世界 8 - Area 18x -> Map 601 + Difficulty
+        if (areaId >= 180 && areaId < 190)
+        {
+            int difficulty = areaId % 10;
+            return 601 + difficulty;
+        }
+
+        // 世界 9 - Area 19x -> Map 701 + Difficulty
+        if (areaId >= 190 && areaId < 200)
+        {
+            int difficulty = areaId % 10;
+            return 701 + difficulty;
+        }
+        
+        // 无尽模式等其他 ID
+        if (areaId >= 10100) return 10001; 
+
+        return 1; // 默认
+    }
     public override async ValueTask UpdateMenu(int position = 0)
     {
         await base.UpdateMenu(position);
