@@ -471,7 +471,7 @@ public override async ValueTask OnBattleEnd(BattleInstance battle, PVEBattleResu
             CurSiteId = (uint)(CurRoom?.SiteId ?? StartSiteId),
             CurRoomId = (uint)(CurRoom?.RoomId ?? 0),
             AreaId = (uint)AreaExcel.RogueAreaID,
-            MapId = (uint)AreaExcel.MapId
+            MapId = (uint)(CurRoom?.MapId ?? GetMapIdFromAreaId(AreaExcel.RogueAreaID))
         };
 
         foreach (var room in RogueRooms) 
