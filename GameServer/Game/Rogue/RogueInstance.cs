@@ -334,57 +334,72 @@ public override void OnBattleStart(BattleInstance battle)
 {
     base.OnBattleStart(battle);
     if (CurRoom == null) return;
-	 // --- 核心关联点 ---
-    	// 肉鸽经理对自己说：只要这场战斗有怪死了，就叫我的 OnRogueMonsterKill 去干活
-    battle.OnMonsterKill += OnRogueMonsterKill;
-	        // --- 核心修复：确保模拟宇宙战斗结算不触发死锁的 MappingInfo 逻辑 ---
-        // 1. 强制将 MappingInfoId 设为 0。这样在发送 PVEBattleResultScRsp 时，
-        //    GetDropItemList() 会跳过那段带有 .Wait() 的异步死锁代码。
-    //battle.MappingInfoId = 0;
 
-        // 2. 模拟宇宙战斗不需要扣除体力，强制设为 0 防止体力同步异常
-        //battle.StaminaCost = 0;
-    int progress = AreaExcel.AreaProgress;  // 世界编号
-    int difficulty = AreaExcel.Difficulty; // 1-5 难度
+    // 1. 挂载击杀回调
+    battle.OnMonsterKill += OnRogueMonsterKill;
+
+    // 2. 清除干扰项 (防死锁、防扣体力)
+    battle.MappingInfoId = 0;
+    battle.StaminaCost = 0;
+
+    // 3. 准备查找 StageId (怪物配置)
     int targetStageId = 0;
 
-    if (CurRoom.Excel.RogueRoomType == 7) // 关底 BOSS 房间
+    // --- 【核心修复 1】使用正确的 MapId ---
+    // 不要重新计算 MapId，直接用房间实例里存的！
+    // (前提是你已经按上一条回答更新了 RogueRoomInstance，加了 MapId 属性)
+    int currentMapId = CurRoom.MapId; 
+
+    // 4. 优先尝试从 RogueMapData 获取怪物配置 (这是最正规的数据驱动方式)
+    if (GameData.RogueMapData.TryGetValue(currentMapId, out var mapRooms))
     {
-        // 核心公式：80300 + (进度(2位)) + (难度(1位))
-        // 例如：世界6难度5 -> 80300000 + 60 + 5 = 80300065
-        targetStageId = 80300000 + (progress * 10) + difficulty;
-    }
-    else 
-    {
-        // 普通房间：依然建议走查表逻辑，最稳妥
-        int mapId = progress * 100 + difficulty;
-        if (GameData.RogueMapData.TryGetValue(mapId, out var mapData))
+        if (mapRooms.TryGetValue(CurRoom.SiteId, out var mapRoomConfig))
         {
-            if (mapData.TryGetValue(CurRoom.SiteId, out var mapInfo) && mapInfo.LevelList.Count > 0)
+            // 如果配置表里配置了 LevelList (怪物组)，从中随机一个
+            if (mapRoomConfig.LevelList != null && mapRoomConfig.LevelList.Count > 0)
             {
-                targetStageId = mapInfo.LevelList.RandomElement();
+                targetStageId = mapRoomConfig.LevelList.RandomElement();
             }
         }
     }
 
-    // 应用 Stage 数据并刷新怪组
+    // 5. 【兜底逻辑】如果是 BOSS 房且没查到 Stage，再尝试硬编码公式
+    // 注意：Boss 房类型通常是 5 (根据你的 RogueRoom.json)，不是 7
+    // 或者判断没有下一关 (NextSiteIds.Count == 0)
+    if (targetStageId == 0 && (CurRoom.Excel.RogueRoomType == 5 || CurRoom.NextSiteIds.Count == 0))
+    {
+        int progress = AreaExcel.AreaProgress;
+        int difficulty = AreaExcel.Difficulty;
+        
+        // 这个公式主要针对 模拟宇宙·扩展 (DLC) 或特定活动
+        // 标准模式下，上面的第4步通常能拿到 ID
+        targetStageId = 80300000 + (progress * 10) + difficulty;
+        Console.WriteLine($"[Rogue] 使用硬编码公式计算 BOSS StageId: {targetStageId}");
+    }
+
+    // 6. 应用 Stage 数据
     if (targetStageId > 0)
     {
         battle.StageId = targetStageId;
         if (GameData.StageConfigData.TryGetValue(targetStageId, out var stageConfig))
         {
-            battle.Stages.Clear(); 
-            battle.Stages.Add(stageConfig); 
+            battle.Stages.Clear();
+            battle.Stages.Add(stageConfig);
         }
         else
         {
-            // 如果报错，可以这里打印出来看看算出来的 ID 对不对
-            Console.WriteLine($"[Rogue ERROR] 无法加载 BOSS StageID: {targetStageId}");
+            Console.WriteLine($"[Rogue Error] 找不到 StageID: {targetStageId} 的配置！");
+            // 极度兜底：给个史莱姆防止卡死
+            // battle.StageId = 201012311; 
         }
     }
 
-    // 等级同步 (使用之前算好的 targetLevel)
-    battle.CustomLevel = progress * 10 + (difficulty - 1) * 10 + 5 + (CurReachedRoom / 2);
+    // --- 【核心修复 2】使用房间预设的等级 ---
+    // 这样能保证战斗内等级和大地图显示的推荐等级一致
+    battle.CustomLevel = CurRoom.MonsterLevel;
+    
+    // 如果想要动态一点，可以加个浮动
+    // battle.CustomLevel = CurRoom.MonsterLevel + (CurReachedRoom / 2);
 }
 
 public override async ValueTask OnBattleEnd(BattleInstance battle, PVEBattleResultCsReq req)
