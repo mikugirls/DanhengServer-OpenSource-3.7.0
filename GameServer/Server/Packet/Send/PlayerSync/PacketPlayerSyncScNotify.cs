@@ -188,6 +188,8 @@ public class PacketPlayerSyncScNotify : BasePacket
                 else
                     notify.DelRelicList.Add((uint)item.UniqueId);
                 break;
+			// --- 修复点：添加 Virtual 分支 ---
+			case ItemMainTypeEnum.Virtual:	
             case ItemMainTypeEnum.Mission:
             case ItemMainTypeEnum.Material:
             case ItemMainTypeEnum.Pet:

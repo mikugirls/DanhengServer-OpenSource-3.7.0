@@ -11,7 +11,7 @@ public class PacketPVEBattleResultScRsp : BasePacket
     {
         var proto = new PVEBattleResultScRsp
         {
-            Retcode = 1
+            Retcode = 0
         };
 
         SetData(proto);

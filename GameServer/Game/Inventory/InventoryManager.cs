@@ -34,22 +34,46 @@ public class InventoryManager(PlayerInstance player) : BasePlayerManager(player)
         if (notify) await Player.SendPacket(new PacketScenePlaneEventScNotify(itemData));
     }
 
+ /// <summary>
+    /// 批量添加物品（解决多物品同时获得时的显示冲突）
+    /// </summary>
     public async ValueTask AddItems(List<ItemData> items, bool notify = true)
     {
-        var syncItems = new List<ItemData>();
+        var displayItems = new List<ItemData>(); // 专门用于弹窗显示的克隆列表（存增量）
+        
         foreach (var item in items)
         {
-            var i = await AddItem(item.ItemId, item.Count, false, sync: false, returnRaw: true);
-            if (i != null) syncItems.Add(i);
+            // 1. 调用 AddItem 核心引擎
+            // 设置 notify: false, sync: false 确保循环过程中保持静默，不发包
+            // returnRaw: true 拿到数据库里的真实引用
+            var i = await AddItem(item.ItemId, item.Count, notify: false, sync: false, returnRaw: true);
+            
+            if (i != null)
+            {
+                // 2. 【核心隔离】克隆一个副本用于 UI 显示
+                var clone = i.Clone();
+                clone.Count = item.Count; // 强制设为本次获得的数量（例如 +10）
+                displayItems.Add(clone);
+            }
         }
 
-        await Player.SendPacket(new PacketPlayerSyncScNotify(syncItems));
-        if (notify) await Player.SendPacket(new PacketScenePlaneEventScNotify(items));
+        // 3. 统一同步背包数据（发送当前最新的【总额】，确保左上角和背包数字刷新）
+        var dbItems = displayItems.Select(x => GetItem(x.ItemId, x.UniqueId) ?? x).ToList();
+        await Player.SendPacket(new PacketPlayerSyncScNotify(dbItems));
+
+        // 4. 统一触发弹窗（发送刚才克隆的【增量】列表，确保右侧弹窗显示 +10 而不是总额）
+        if (notify && displayItems.Count > 0)
+        {
+            await Player.SendPacket(new PacketScenePlaneEventScNotify(displayItems));
+        }
     }
 
  /// <summary>
     /// 添加物品的核心逻辑（最终整合版）
     /// 解决：购买配方卡死、星海宝藏入包、沉浸器同步刷新、任务系统触发
+    /// </summary>
+    /// <summary>
+    /// 添加物品核心引擎（解决虚拟物品总数显示问题）
     /// </summary>
     public async ValueTask<ItemData?> AddItem(int itemId, int count, bool notify = true, int rank = 1, int level = 1,
         bool sync = true, bool returnRaw = false)
@@ -69,27 +93,17 @@ public class InventoryManager(PlayerInstance player) : BasePlayerManager(player)
                     break;
                 }
                 itemData = await PutItem(itemId, 1, rank, level: level, uniqueId: ++Data.NextUniqueId);
-                // 稀有装备触发好友动态
-                if (itemConfig.Rarity == ItemRarityEnum.SuperRare)
-                    Player.FriendRecordData!.AddAndRemoveOld(new FriendDevelopmentInfoPb
-                    {
-                        DevelopmentType = DevelopmentType.DevelopmentUnlockEquipment,
-                        Params = { { "EquipmentTid", (uint)itemConfig.ID } }
-                    });
                 break;
 
             // 2. 消耗品/解锁类
             case ItemMainTypeEnum.Usable:
                 switch (itemConfig.ItemSubType)
                 {
-                    // 立即解锁类：直接存入 PlayerUnlockData
                     case ItemSubTypeEnum.HeadIcon: Player.PlayerUnlockData!.HeadIcons.Add(itemId); break;
                     case ItemSubTypeEnum.ChatBubble: Player.PlayerUnlockData!.ChatBubbles.Add(itemId); break;
                     case ItemSubTypeEnum.PhoneTheme: Player.PlayerUnlockData!.PhoneThemes.Add(itemId); break;
                     case ItemSubTypeEnum.PersonalCard: Player.PlayerUnlockData!.PersonalCards.Add(itemId); break;
                     case ItemSubTypeEnum.PhoneCase: Player.PlayerUnlockData!.PhoneCases.Add(itemId); break;
-
-                    // --- 核心修正：配方和自选礼包必须 PutItem 才能解决购买卡死问题 ---
                     case ItemSubTypeEnum.Formula:
                     case ItemSubTypeEnum.ForceOpitonalGift:
                     case ItemSubTypeEnum.Food:
@@ -98,7 +112,6 @@ public class InventoryManager(PlayerInstance player) : BasePlayerManager(player)
                     case ItemSubTypeEnum.Gift:
                         itemData = await PutItem(itemId, count);
                         break;
-
                     case ItemSubTypeEnum.AvatarSkin:
                         var avatarId = GameData.AvatarSkinData[itemId].AvatarID;
                         if (!Player.PlayerUnlockData!.Skins.TryGetValue(avatarId, out var value))
@@ -110,7 +123,6 @@ public class InventoryManager(PlayerInstance player) : BasePlayerManager(player)
                         await Player.SendPacket(new PacketUnlockAvatarSkinScNotify(itemId));
                         break;
                 }
-                // 兜底：如果上面没分配 itemData（如头像类），创建一个临时对象用于 UI 显示
                 itemData ??= new ItemData { ItemId = itemId, Count = count };
                 break;
 
@@ -124,27 +136,25 @@ public class InventoryManager(PlayerInstance player) : BasePlayerManager(player)
                 (_, itemData) = await HandleRelic(itemId, ++Data.NextUniqueId, 0);
                 break;
 
-            // 4. 虚拟物品（货币/经验）
+            // 4. 虚拟物品 (核心修正：映射到你提供的 ID 列表)
             case ItemMainTypeEnum.Virtual:
                 var actualTotalCount = 0;
                 switch (itemConfig.ID)
                 {
-                    case 1: Player.Data.Hcoin += count; actualTotalCount = Player.Data.Hcoin; break;
-                    case 2: Player.Data.Scoin += count; actualTotalCount = Player.Data.Scoin; break;
-                    case 3: Player.Data.Mcoin += count; actualTotalCount = Player.Data.Mcoin; break;
-                    case 11: Player.Data.Stamina += count; actualTotalCount = Player.Data.Stamina; break;
-                    case 22: Player.Data.Exp += count; Player.OnAddExp(); actualTotalCount = Player.Data.Exp; break;
-                    case 32: Player.Data.TalentPoints += count; actualTotalCount = Player.Data.TalentPoints; break;
-                    // 沉浸器增量
-                    case 33: Player.Data.ImmersiveArtifact += count; actualTotalCount = Player.Data.ImmersiveArtifact; break;
+                    case 1: case 102: Player.Data.Hcoin += count; actualTotalCount = Player.Data.Hcoin; break; // 星琼
+                    case 2: Player.Data.Scoin += count; actualTotalCount = Player.Data.Scoin; break;           // 信用点
+                    case 3: Player.Data.Mcoin += count; actualTotalCount = Player.Data.Mcoin; break;           // 古老梦华
+                    case 11: Player.Data.Stamina += count; actualTotalCount = Player.Data.Stamina; break;      // 开拓力
+                    case 22: Player.Data.Exp += count; Player.OnAddExp(); actualTotalCount = Player.Data.Exp; break; // 里程
+                    case 32: Player.Data.TalentPoints += count; actualTotalCount = Player.Data.TalentPoints; break; // 技能点
+                    case 33: Player.Data.ImmersiveArtifact += count; actualTotalCount = Player.Data.ImmersiveArtifact; break; // 沉浸器
                 }
-
-                if (count != 0)
+                if (count != 0 && sync) 
                 {
-                    // 虚拟物品变更，必须同步 Player 全量数据以刷新客户端顶栏
-                    if (sync) await Player.SendPacket(new PacketPlayerSyncScNotify(Player.ToProto()));
-                    itemData = new ItemData { ItemId = itemId, Count = actualTotalCount };
+                    // 仅当需要同步时，发送全量包更新客户端左上角/顶栏
+                    await Player.SendPacket(new PacketPlayerSyncScNotify(Player.ToProto()));
                 }
+                itemData = new ItemData { ItemId = itemId, Count = actualTotalCount };
                 break;
 
             // 5. 角色卡
@@ -152,47 +162,39 @@ public class InventoryManager(PlayerInstance player) : BasePlayerManager(player)
                 var formalAvatar = Player.AvatarManager?.GetFormalAvatar(itemId);
                 if (formalAvatar != null)
                 {
-                    // 已有角色，转为命座材料
                     var rankUpItem = Player.InventoryManager!.GetItem(itemId + 10000);
                     if ((formalAvatar.PathInfos[itemId].Rank + (rankUpItem?.Count ?? 0)) <= 5)
                         itemData = await PutItem(itemId + 10000, 1);
                 }
                 else
                 {
-                    // 新角色发放
                     await Player.AddAvatar(itemId, sync, notify);
                 }
                 break;
 
-            case ItemMainTypeEnum.Mission:
+            default:
                 itemData = await PutItem(itemId, count);
                 break;
-
-            default:
-                itemData = await PutItem(itemId, Math.Min(count, itemConfig.PileLimit));
-                break;
         }
 
-        // --- 后置处理：同步与通知 ---
-        if (itemData == null) return returnRaw ? itemData : null;
+        if (itemData == null) return null;
 
-        // 克隆一份用于通知，防止引用被后续修改
-        ItemData notifyClone = itemData.Clone();
+        // 【核心修复：隔离 UI 引用】
+        // 克隆一个临时对象，专门用于发送“获得物品”通知
+        var notifyClone = itemData.Clone();
+        notifyClone.Count = count; // 强制设为本次增加的数量 (+50)，而不是余额 (6910)
 
-        // 同步背包变化
-        if (sync)
+        // 仅当不是虚拟物品时在此同步（虚拟物品已经在上面同步过 Player.ToProto 了）
+        if (sync && itemConfig.ItemMainType != ItemMainTypeEnum.Virtual)
             await Player.SendPacket(new PacketPlayerSyncScNotify(itemData));
 
-        // 客户端右侧获得物品弹窗
+        // 发送屏幕右侧的“获得物品”弹窗
         if (notify)
-        {
-            notifyClone.Count = count; // 弹窗显示的应该是本次获得的数量，而不是背包总数
             await Player.SendPacket(new PacketScenePlaneEventScNotify(notifyClone));
-        }
 
-        // 触发任务系统逻辑
         Player.MissionManager?.HandleFinishType(MissionFinishTypeEnum.GetItem, itemData.ToProto());
 
+        // 根据需要返回：returnRaw 为 true 返回数据库真实对象，否则返回增量副本
         return returnRaw ? itemData : notifyClone;
     }
 
@@ -272,7 +274,10 @@ public class InventoryManager(PlayerInstance player) : BasePlayerManager(player)
         return removedItems;
     }
 
-   public async ValueTask<ItemData?> RemoveItem(int itemId, int count, int uniqueId = 0, bool sync = true)
+  /// <summary>
+    /// 移除/消耗物品（补全虚拟货币与沉浸器扣除逻辑）
+    /// </summary>
+    public async ValueTask<ItemData?> RemoveItem(int itemId, int count, int uniqueId = 0, bool sync = true)
     {
         GameData.ItemConfigData.TryGetValue(itemId, out var itemConfig);
         if (itemConfig == null) return null;
@@ -281,12 +286,14 @@ public class InventoryManager(PlayerInstance player) : BasePlayerManager(player)
 
         switch (itemConfig.ItemMainType)
         {
+            // 1. 处理普通堆叠物品（材料、消耗品、任务道具）
             case ItemMainTypeEnum.Material:
             case ItemMainTypeEnum.Pet:
             case ItemMainTypeEnum.Mission:
             case ItemMainTypeEnum.Usable:
                 var item = Data.MaterialItems.Find(x => x.ItemId == itemId);
                 if (item == null) return null;
+                
                 item.Count -= count;
                 if (item.Count <= 0)
                 {
@@ -295,42 +302,51 @@ public class InventoryManager(PlayerInstance player) : BasePlayerManager(player)
                 }
                 itemData = item;
                 break;
+
+            // 2. 处理虚拟物品（根据你提供的 ID 列表精准扣除）
             case ItemMainTypeEnum.Virtual:
                 switch (itemConfig.ID)
                 {
-                    case 1: Player.Data.Hcoin -= count; itemData = new ItemData { ItemId = itemId, Count = count }; break;
-                    case 2: Player.Data.Scoin -= count; itemData = new ItemData { ItemId = itemId, Count = count }; break;
-                    case 3: Player.Data.Mcoin -= count; itemData = new ItemData { ItemId = itemId, Count = count }; break;
-                    case 32: Player.Data.TalentPoints -= count; itemData = new ItemData { ItemId = itemId, Count = count }; break;
-                    
-                    // --- 关键修改：补全沉浸器扣除逻辑 ---
-                    case 33: 
-                        Player.Data.ImmersiveArtifact = Math.Max(0, Player.Data.ImmersiveArtifact - count); 
-                        itemData = new ItemData { ItemId = itemId, Count = count }; 
-                        break;
+                    case 1: case 102: Player.Data.Hcoin -= count; break;      // 星琼
+                    case 2: Player.Data.Scoin -= count; break;                // 信用点
+                    case 3: Player.Data.Mcoin -= count; break;                // 古老梦华
+                    case 11: Player.Data.Stamina -= count; break;             // 开拓力
+                    case 32: Player.Data.TalentPoints = Math.Max(0, Player.Data.TalentPoints - count); break; // 秘技点
+                    case 33: Player.Data.ImmersiveArtifact = Math.Max(0, Player.Data.ImmersiveArtifact - count); break; // 沉浸器
                 }
-                // 虚拟物品扣除后，同步玩家基础数据（星琼、金币、沉浸器等）
-                if (sync && itemData != null) await Player.SendPacket(new PacketPlayerSyncScNotify(Player.ToProto()));
+                
+                // 虚拟物品克隆一个副本用于返回
+                itemData = new ItemData { ItemId = itemId, Count = count };
+                
+                // 【核心：实时刷新顶栏】
+                // 虚拟货币变动后，必须同步全量 Player 数据，客户端顶栏才会立刻变动
+                if (sync) await Player.SendPacket(new PacketPlayerSyncScNotify(Player.ToProto()));
                 break;
+
+            // 3. 处理装备（光锥）
             case ItemMainTypeEnum.Equipment:
                 var equipment = Data.EquipmentItems.Find(x => x.UniqueId == uniqueId);
                 if (equipment == null) return null;
                 Data.EquipmentItems.Remove(equipment);
-                equipment.Count = 0;
                 itemData = equipment;
                 break;
+
+            // 4. 处理遗器
             case ItemMainTypeEnum.Relic:
                 var relic = Data.RelicItems.Find(x => x.UniqueId == uniqueId);
                 if (relic == null) return null;
                 Data.RelicItems.Remove(relic);
-                relic.Count = 0;
                 itemData = relic;
                 break;
         }
 
-        // 核心修改：判断 sync 标志，通知客户端背包内该物品数量已变动
-        if (itemData != null && sync) await Player.SendPacket(new PacketPlayerSyncScNotify(itemData));
+        // 如果是普通物品且需要同步，发送背包变化包
+        if (itemData != null && sync && itemConfig.ItemMainType != ItemMainTypeEnum.Virtual)
+        {
+            await Player.SendPacket(new PacketPlayerSyncScNotify(itemData));
+        }
 
+        // 触发任务系统的“使用物品”任务进度
         Player.MissionManager?.HandleFinishType(MissionFinishTypeEnum.UseItem, new ItemData
         {
             ItemId = itemId,
@@ -416,86 +432,131 @@ public class InventoryManager(PlayerInstance player) : BasePlayerManager(player)
         }
     }
 
-   public async ValueTask<List<ItemData>> HandleReward(int rewardId, bool notify = false, bool sync = true)
+ /// <summary>
+    /// 处理常规奖励表（解决任务/邮件领取时显示总额的问题）
+    /// </summary>
+    public async ValueTask<List<ItemData>> HandleReward(int rewardId, bool notify = false, bool sync = true)
     {
         GameData.RewardDataData.TryGetValue(rewardId, out var rewardData);
         if (rewardData == null) return [];
-        List<ItemData> items = [];
 
-        // 核心修改：内部循环 AddItem 时强制设为 false。
-        // 这样即使你外面没改调用处，里面也不会再疯狂发通知包了。
+        List<ItemData> dbItems = [];    // 数据库实时总量列表
+        List<ItemData> resItems = [];   // UI 显示增量列表
+
+        // 1. 遍历奖励配置中的所有普通道具
         foreach (var item in rewardData.GetItems())
         {
-            var i = await AddItem(item.Item1, item.Item2, notify: false, sync: false);
-            if (i != null) items.Add(i);
-        }
-
-        // 处理硬币/星琼 (同样强制静默)
-        var hCoin = await AddItem(1, rewardData.Hcoin, notify: false, sync: false);
-        if (hCoin != null) items.Add(hCoin);
-
-        // 统一在逻辑出口处同步一次数据 (保证客户端能收到数据更新)
-        if (sync && items.Count > 0)
-        {
-            await Player.SendPacket(new PacketPlayerSyncScNotify(items));
-        }
-
-        // 统一在最后弹窗一次 (如果是 notify=true 的话)
-        if (notify && items.Count > 0)
-        {
-            await Player.SendPacket(new PacketScenePlaneEventScNotify(items));
-        }
-
-        return items;
-    }
-
-    public async ValueTask<List<ItemData>> HandleMappingInfo(int mappingId, int worldLevel)
-    {
-        // calculate drops
-        List<ItemData> items = [];
-        List<ItemData> resItems = [];
-        GameData.MappingInfoData.TryGetValue(mappingId * 10 + worldLevel, out var mapping);
-        if (mapping != null)
-        {
-            foreach (var item in mapping.DropItemList)
+            // 同样使用静默模式入库
+            var i = await AddItem(item.Item1, item.Item2, notify: false, sync: false, returnRaw: true);
+            if (i != null)
             {
-                var random = Random.Shared.Next(0, 101);
+                dbItems.Add(i);
+                // 【核心隔离】克隆增量副本用于返回给客户端
+                var clone = i.Clone();
+                clone.Count = item.Item2; 
+                resItems.Add(clone);
+            }
+        }
 
-                if (random <= item.Chance)
+        // 2. 处理奖励配置中的硬币/星琼 (Hcoin)
+        if (rewardData.Hcoin > 0)
+        {
+            var hCoin = await AddItem(1, rewardData.Hcoin, notify: false, sync: false, returnRaw: true);
+            if (hCoin != null)
+            {
+                dbItems.Add(hCoin);
+                var clone = hCoin.Clone();
+                clone.Count = rewardData.Hcoin;
+                resItems.Add(clone);
+            }
+        }
+
+        // 3. 统一同步：如果需要同步，发送最新的数据库总量
+        if (sync && dbItems.Count > 0)
+        {
+            await Player.SendPacket(new PacketPlayerSyncScNotify(dbItems));
+        }
+
+        // 4. 统一弹窗：如果需要右侧通知，发送克隆的增量
+        if (notify && resItems.Count > 0)
+        {
+            await Player.SendPacket(new PacketScenePlaneEventScNotify(resItems));
+        }
+
+        // 返回增量列表，供 UI 协议包（如结算包）直接调用
+        return resItems; 
+    }
+  /// <summary>
+    /// 处理副本/花萼结算（解决6波掉落固定与里程显示总数问题）
+    /// </summary>
+   public async ValueTask<List<ItemData>> HandleMappingInfo(int mappingId, int worldLevel, int wave = 1)
+    {
+        // ============= 增加调试打印 =============
+        int searchKey = mappingId * 10 + worldLevel;
+        Console.WriteLine("\n[DEBUG-MAPPING] =========================================");
+        Console.WriteLine($"[DEBUG-MAPPING] 收到结算请求 -> 副本ID: {mappingId}, 均衡等级: {worldLevel}, 波次: {wave}");
+        Console.WriteLine($"[DEBUG-MAPPING] 检索字典 Key -> {searchKey}");
+        // =======================================
+
+        List<ItemData> resItems = []; 
+        
+        // 1. 获取 Mapping 配置
+        GameData.MappingInfoData.TryGetValue(searchKey, out var mapping);
+        
+        if (mapping == null) 
+        {
+            Console.WriteLine($"[DEBUG-MAPPING] !!! 致命错误: 找不到该 ID 的配置 !!!");
+            Console.WriteLine("=========================================================\n");
+            return [];
+        }
+
+        // ============= 打印内存里的真实数据 =============
+        Console.WriteLine($"[DEBUG-MAPPING] 内存匹配成功 -> 当前副本映射名Hash: {mapping.ID}");
+        Console.WriteLine($"[DEBUG-MAPPING] 该配置下的 DropItemList 包含以下物品:");
+        foreach (var d in mapping.DropItemList)
+        {
+            Console.WriteLine($"   - 物品ID: {d.ItemID} (名称参考: 110406=虚幻铸铁, 183002=相位灵火)");
+        }
+        Console.WriteLine("=========================================================\n");
+        // ===============================================
+
+        // 2. 计算普通道具掉落 (里程、信用点、材料)
+        foreach (var item in mapping.DropItemList)
+        {
+            // 判定掉落概率
+            if (Random.Shared.Next(0, 101) <= item.Chance)
+            {
+                // 计算单次基础数量
+                var amount = item.ItemNum > 0 ? item.ItemNum : Random.Shared.Next(item.MinCount, item.MaxCount + 1);
+                
+                // 倍率控制
+                var multiplier = (item.ItemID == 22 || item.ItemID == 2) ? 1 : ConfigManager.Config.ServerOption.ValidFarmingDropRate();
+                
+                var finalCount = amount * multiplier * wave; 
+
+                var dbItem = await AddItem(item.ItemID, finalCount, notify: false, sync: false, returnRaw: true);
+                
+                if (dbItem != null)
                 {
-                    var amount = item.ItemNum > 0 ? item.ItemNum : Random.Shared.Next(item.MinCount, item.MaxCount + 1);
-
-                    GameData.ItemConfigData.TryGetValue(item.ItemID, out var itemData);
-                    if (itemData == null) continue;
-
-                    items.Add(new ItemData
-                    {
-                        ItemId = item.ItemID,
-                        Count = amount * (item.ItemID == 22
-                            ? 1
-                            : ConfigManager.Config.ServerOption.ValidFarmingDropRate())
-                    });
+                    var displayItem = dbItem.Clone();
+                    displayItem.Count = finalCount; 
+                    resItems.Add(displayItem);
                 }
             }
+        }
 
-            // Generate relics
+        // 3. 处理遗器掉落
+        for (int i = 0; i < wave; i++)
+        {
             var relicDrops = mapping.GenerateRelicDrops();
-
-            // Let AddItem notify relics count exceeding limit 
-            items.AddRange(Data.RelicItems.Count + relicDrops.Count - 1 > GameConstants.INVENTORY_MAX_RELIC
-                ? relicDrops[..(GameConstants.INVENTORY_MAX_RELIC - Data.RelicItems.Count + 1)]
-                : relicDrops);
-
-            foreach (var item in items)
+            foreach (var relic in relicDrops)
             {
-                var i = (await Player.InventoryManager!.AddItem(item.ItemId, item.Count, false))!;
-                i.Count = item.Count; // return the all thing
-
-                resItems.Add(i);
+                var dbRelic = await AddItem(relic.ItemId, 1, notify: false, sync: false, returnRaw: true);
+                if (dbRelic != null) resItems.Add(dbRelic);
             }
         }
 
-        return resItems;
+        return resItems; 
     }
 
     public async ValueTask<(int, ItemData?)> HandleRelic(

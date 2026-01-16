@@ -153,72 +153,23 @@ public class EntityMonster(
         if (CustomStageId > 0) return CustomStageId;
         return Info.EventID;
     }
-   public async ValueTask<List<ItemData>> Kill(bool sendPacket = true)
+     public async ValueTask<List<ItemData>> Kill(bool sendPacket = true)
+{
+    IsAlive = false;
+
+    // --- 核心：只负责发射信号 ---
+    // 只要是在战斗中，就告诉战斗实例：“我死了”。
+    // 至于收到信号的是大世界插件还是肉鸽插件，怪物完全不关心。
+    if (Scene.Player.BattleInstance != null)
     {
-        IsAlive = false;
-
-        // 1. 处理掉落逻辑：根据怪物ID和世界等级获取掉落物
-        GameData.MonsterDropData.TryGetValue(MonsterData.ID * 10 + Scene.Player.Data.WorldLevel, out var dropData);
-        var dropItems = dropData != null ? dropData.CalculateDrop() : [];
-        if (dropItems.Count > 0)
-        {
-            await Scene.Player.InventoryManager!.AddItems(dropItems, sendPacket);
-        }
-
-        // --- 核心修复：红锁解锁与肉鸽逻辑隔离 ---
-
-        // 定义所有的肉鸽/挑战模式黑名单
-        var isRogueMode = Scene.GameModeType == GameModeTypeEnum.RogueExplore ||   // 模拟宇宙
-                          Scene.GameModeType == GameModeTypeEnum.RogueChallenge || // 周期性挑战
-                          Scene.GameModeType == GameModeTypeEnum.RogueAeonRoom ||  // 星神房
-                          Scene.GameModeType == GameModeTypeEnum.ChessRogue ||      // 黄金与机械/蝗灾
-                          Scene.GameModeType == GameModeTypeEnum.TournRogue ||      // 差分宇宙
-                          Scene.GameModeType == GameModeTypeEnum.MagicRogue;       // 不可知域
-
-        if (!isRogueMode)
-        {
-            // --- A. 大世界逻辑：解锁同组宝箱 ---
-            var relatedProps = Scene.Entities.Values
-                .OfType<EntityProp>()
-                .Where(p => p.GroupId == this.GroupId);
-
-            foreach (var prop in relatedProps)
-            {
-                // 跳过肉鸽专用的传送门实体
-                if (prop is RogueProp) continue;
-
-                // 将大世界宝箱从锁定状态改为关闭（可开启）状态
-                await prop.SetState(PropStateEnum.ChestClosed);
-            }
-        }
-        else 
-        {
-            // --- B. 肉鸽模式逻辑：解除沉浸器(8001)的红锁 ---
-            var relatedProps = Scene.Entities.Values
-                .OfType<EntityProp>()
-                .Where(p => p.GroupId == this.GroupId);
-
-            foreach (var prop in relatedProps)
-            {
-                // 8001 是标准沉浸装置的 Prop ID
-                if (prop.Excel.ID == 8001) 
-                {
-                    // 【关键点】让红锁链消失：
-                    // 从 ChestLocked (11) 切换为 WaitActive (17)
-                    // WaitActive 会让球体展开并发出可交互的金色光效
-                    await prop.SetState(PropStateEnum.WaitActive); 
-                }
-            }
-        }
-        // ---------------------------------------
-
-        // 2. 任务处理：触发杀怪相关的任务进度
-        await Scene.Player.MissionManager!.HandleFinishType(MissionFinishTypeEnum.KillMonster, this);
-        
-        // 3. 移除实体：将怪物从当前场景实例中删除
-        await Scene.RemoveEntity(this);
-        
-        return dropItems;
+        await Scene.Player.BattleInstance.TriggerMonsterKill(this);
     }
+
+    // 任务计数和清理
+    await Scene.Player.MissionManager!.HandleFinishType(MissionFinishTypeEnum.KillMonster, this);
+    await Scene.RemoveEntity(this);
+    
+    return new List<ItemData>(); // 掉落物已经通过事件处理存在 BattleInstance 里了
+}
    
 }

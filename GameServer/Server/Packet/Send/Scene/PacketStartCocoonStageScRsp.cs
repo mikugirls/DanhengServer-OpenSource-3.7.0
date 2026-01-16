@@ -10,7 +10,7 @@ public class PacketStartCocoonStageScRsp : BasePacket
     {
         var rsp = new StartCocoonStageScRsp
         {
-            Retcode = 1
+            Retcode = 0
         };
 
         SetData(rsp);

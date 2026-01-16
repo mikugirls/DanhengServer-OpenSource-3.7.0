@@ -15,6 +15,7 @@ using EggLink.DanhengServer.GameServer.Server.Packet.Send.Scene;
 using EggLink.DanhengServer.Proto;
 using EggLink.DanhengServer.Util;
 using EggLink.DanhengServer.Database;
+using EggLink.DanhengServer.Enums.Scene;
 using static EggLink.DanhengServer.GameServer.Plugin.Event.PluginEvent;
 
 namespace EggLink.DanhengServer.GameServer.Game.Battle;
@@ -146,7 +147,8 @@ public class BattleManager(PlayerInstance player) : BasePlayerManager(player)
                 battleInstance.Buffs.Add(mazeBuff);
 
             battleInstance.AvatarInfo = avatarList;
-
+						// 这里的逻辑：只要不是那堆肉鸽模式，就都算作“大世界”挂载掉落插件
+			
             // call battle start
             Player.RogueManager!.GetRogueInstance()?.OnBattleStart(battleInstance);
             Player.ChallengeManager!.ChallengeInstance?.OnBattleStart(battleInstance);
@@ -161,7 +163,27 @@ public class BattleManager(PlayerInstance player) : BasePlayerManager(player)
 
         return null;
     }
+	private async ValueTask OverworldKillHandler(EntityMonster monster)
+{
+    // 1. 处理大世界掉落并存入结算清单
+    var dropId = monster.MonsterData.ID * 10 + Player.Data.WorldLevel;
+    if (GameData.MonsterDropData.TryGetValue(dropId, out var dropData))
+    {
+        var items = dropData.CalculateDrop();
+        await Player.InventoryManager!.AddItems(items, false);
+        Player.BattleInstance?.MonsterDropItems.AddRange(items);
+    }
 
+    // 2. 解锁大世界宝箱
+    var chests = monster.Scene.Entities.Values.OfType<EntityProp>()
+        .Where(p => p.GroupId == monster.GroupId && p.Excel.PropType == PropTypeEnum.PROP_TREASURE_CHEST);
+
+    foreach (var chest in chests)
+    {
+        if (chest.State == PropStateEnum.ChestLocked)
+            await chest.SetState(PropStateEnum.ChestClosed);
+    }
+}
     public async ValueTask StartStage(int eventId)
     {
         if (Player.BattleInstance != null)
@@ -327,93 +349,91 @@ public class BattleManager(PlayerInstance player) : BasePlayerManager(player)
 
 
 
-    public async ValueTask EndBattle(PVEBattleResultCsReq req)
+   public async ValueTask EndBattle(PVEBattleResultCsReq req)
+{
+    InvokeOnPlayerQuitBattle(Player, req);
+
+    var battle = Player.BattleInstance;
+    if (battle == null)
     {
-        InvokeOnPlayerQuitBattle(Player, req);
+        await Player.SendPacket(new PacketPVEBattleResultScRsp());
+        return;
+    }
 
-        if (Player.BattleInstance == null)
-        {
-            await Player.SendPacket(new PacketPVEBattleResultScRsp());
-            return;
-        }
+    battle.BattleEndStatus = req.EndStatus;
+    battle.BattleResult = req;
 
-        Player.BattleInstance.BattleEndStatus = req.EndStatus;
-        var battle = Player.BattleInstance;
-        var updateStatus = true;
-        var teleportToAnchor = false;
-        var minimumHp = 0;
-        var dropItems = new List<ItemData>();
-        switch (req.EndStatus)
-        {
-            case BattleEndStatus.BattleEndWin:
-                // Drops
-                foreach (var monster in battle.EntityMonsters) dropItems.AddRange(await monster.Kill(false));
-                // Spend stamina
-                if (battle.StaminaCost > 0) await Player.SpendStamina(battle.StaminaCost);
-                break;
-            case BattleEndStatus.BattleEndLose:
-                // Set avatar hp to 20% if the player's party is downed
-                minimumHp = 2000;
-                teleportToAnchor = true;
-                break;
-            default:
-                teleportToAnchor = true;
-                if (battle.CocoonWave > 0) teleportToAnchor = false;
-                updateStatus = false;
-                break;
-        }
+    var updateStatus = true;
+    var teleportToAnchor = false;
+    var minimumHp = 0;
 
-        if (updateStatus)
+    // --- 1. 异步结算掉落 (不要手动清空 dropItems) ---
+    if (req.EndStatus == BattleEndStatus.BattleEndWin)
+    {
+        // 这里会自动填充 battle.MonsterDropItems 和 RaidRewardItems
+        await Player.DropManager!.ProcessBattleRewards(battle, req);
+
+        if (battle.StaminaCost > 0) await Player.SpendStamina(battle.StaminaCost);
+    }
+    else if (req.EndStatus == BattleEndStatus.BattleEndLose)
+    {
+        minimumHp = 2000;
+        teleportToAnchor = true;
+    }
+    else 
+    {
+        teleportToAnchor = battle.CocoonWave <= 0;
+        updateStatus = false;
+    }
+
+    // --- 2. 更新角色状态 ---
+    if (updateStatus)
+    {
+        var lineup = Player.LineupManager!.GetCurLineup()!;
+        foreach (var avatar in req.Stt.BattleAvatarList)
         {
-            var lineup = Player.LineupManager!.GetCurLineup()!;
-            // Update battle status
-            foreach (var avatar in req.Stt.BattleAvatarList)
+            // 强制将左侧转为父类，这样 ?? 运算符就能匹配右侧了
+			BaseAvatarInfo? avatarInstance = (BaseAvatarInfo?)Player.AvatarManager!.GetFormalAvatar((int)avatar.Id) ?? 
+                                 Player.AvatarManager!.GetTrialAvatar((int)avatar.Id);
+            
+            if (avatarInstance != null)
             {
-                BaseAvatarInfo? avatarInstance = Player.AvatarManager!.GetFormalAvatar((int)avatar.Id);
                 var prop = avatar.AvatarStatus;
                 var curHp = (int)Math.Max(Math.Round(prop.LeftHp / prop.MaxHp * 10000), minimumHp);
                 var curSp = (int)prop.LeftSp * 100;
-                if (avatarInstance == null)
-                {
-                    avatarInstance = Player.AvatarManager!.GetTrialAvatar((int)avatar.Id);
-                    avatarInstance?.SetCurHp(curHp, lineup.LineupType != 0);
-                    avatarInstance?.SetCurSp(curSp, lineup.LineupType != 0);
-                }
-                else
-                {
-                    avatarInstance.SetCurHp(curHp, lineup.LineupType != 0);
-                    avatarInstance.SetCurSp(curSp, lineup.LineupType != 0);
-                }
-            }
-
-            await Player.SendPacket(new PacketSyncLineupNotify(lineup));
-        }
-
-        if (teleportToAnchor)
-        {
-            var anchorProp = Player.SceneInstance?.GetNearestSpring(long.MaxValue);
-            if (anchorProp != null)
-            {
-                var anchor = Player.SceneInstance?.FloorInfo?.GetAnchorInfo(
-                    anchorProp.PropInfo.AnchorGroupID,
-                    anchorProp.PropInfo.AnchorID
-                );
-                if (anchor != null) await Player.MoveTo(anchor.ToPositionProto());
+                avatarInstance.SetCurHp(curHp, lineup.LineupType != 0);
+                avatarInstance.SetCurSp(curSp, lineup.LineupType != 0);
             }
         }
-
-        // call battle end
-        battle.MonsterDropItems = dropItems;
-        battle.BattleResult = req;
-
-        Player.BattleInstance = null;
-
-        battle.OnBattleEnd += Player.MissionManager!.OnBattleFinish;
-        await battle.TriggerOnBattleEnd();
-
-        if (Player.ActivityManager!.TrialActivityInstance != null && req.EndStatus == BattleEndStatus.BattleEndWin)
-            await Player.ActivityManager.TrialActivityInstance.EndActivity(TrialActivityStatus.Finish);
-
-        await Player.SendPacket(new PacketPVEBattleResultScRsp(req, Player, battle));
+        await Player.SendPacket(new PacketSyncLineupNotify(lineup));
     }
+
+    // --- 3. 处理传送逻辑 ---
+    if (teleportToAnchor)
+    {
+        var anchorProp = Player.SceneInstance?.GetNearestSpring(long.MaxValue);
+        if (anchorProp != null)
+        {
+            var anchor = Player.SceneInstance?.FloorInfo?.GetAnchorInfo(anchorProp.PropInfo.AnchorGroupID, anchorProp.PropInfo.AnchorID);
+            if (anchor != null) await Player.MoveTo(anchor.ToPositionProto());
+        }
+    }
+
+    // --- 4. 【关键：先发结算包】 ---
+    // 先告诉客户端战斗赢了，展示掉落图标
+    Console.WriteLine($"[Battle] 发送战斗结算包 PVEBattleResultScRsp");
+    await Player.SendPacket(new PacketPVEBattleResultScRsp(req, Player, battle));
+
+    // --- 5. 【后触发通关逻辑】 ---
+    // 肉鸽 1004 的通关动画和结算界面应该在战斗包之后
+    battle.OnBattleEnd += Player.MissionManager!.OnBattleFinish;
+    await battle.TriggerOnBattleEnd();
+
+    if (Player.ActivityManager!.TrialActivityInstance != null && req.EndStatus == BattleEndStatus.BattleEndWin)
+        await Player.ActivityManager.TrialActivityInstance.EndActivity(TrialActivityStatus.Finish);
+
+    // 最后才销毁实例
+    Player.BattleInstance = null;
+    Console.WriteLine($"[Battle] <<< 战斗流程彻底结束");
+}
 }

@@ -41,6 +41,7 @@ using static EggLink.DanhengServer.GameServer.Plugin.Event.PluginEvent;
 using OfferingManager = EggLink.DanhengServer.GameServer.Game.Inventory.OfferingManager;
 using EggLink.DanhengServer.GameServer.Server.Packet.Send.Activity;
 using EggLink.DanhengServer.GameServer.Server.Packet.Send.Item;
+using EggLink.DanhengServer.GameServer.Game.Drop;
 namespace EggLink.DanhengServer.GameServer.Game.Player;
 
 public partial class PlayerInstance(PlayerData data)
@@ -55,6 +56,7 @@ public partial class PlayerInstance(PlayerData data)
     public BattleManager? BattleManager { get; private set; }
     public SceneSkillManager? SceneSkillManager { get; private set; }
     public BattleInstance? BattleInstance { get; set; }
+	public DropManager? DropManager { get; private set; }
 
     #endregion
 
@@ -176,6 +178,7 @@ public partial class PlayerInstance(PlayerData data)
         LineupManager = new LineupManager(this);
         InventoryManager = new InventoryManager(this);
         BattleManager = new BattleManager(this);
+		DropManager = new DropManager(this); // <--- 添加这一行
         SceneSkillManager = new SceneSkillManager(this);
         MissionManager = new MissionManager(this);
         GachaManager = new GachaManager(this);
@@ -334,7 +337,12 @@ public partial class PlayerInstance(PlayerData data)
         await LoadScene(Data.PlaneId, Data.FloorId, Data.EntryId, Data.Pos!, Data.Rot!, false);
         if (SceneInstance == null) await EnterScene(2000101, 0, false);
         RogueManager?.GetRogueScore();
-		
+		// 2. 如果存在进行中的肉鸽实例，同步肉鸽特定的虚拟物品包
+		if (RogueManager?.RogueInstance != null)
+		{
+        // 同步包含 31(碎片)和 33(沉浸器) 的肉鸽货币包
+        await SendPacket(new EggLink.DanhengServer.GameServer.Server.Packet.Send.RogueCommon.PacketSyncRogueCommonVirtualItemInfoScNotify(RogueManager.RogueInstance));
+		}
 		
 		if (ActivityManager != null)
     {

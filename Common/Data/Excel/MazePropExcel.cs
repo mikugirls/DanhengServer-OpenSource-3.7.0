@@ -14,6 +14,9 @@ public class MazePropExcel : ExcelResource
     public int ID { get; set; }
     public HashName PropName { get; set; } = new();
     public string JsonPath { get; set; } = "";
+	// --- 【必须添加此字段以修复编译错误 CS1061】 ---
+    [JsonProperty("MappingInfoID")] 
+    public int MappingInfoID { get; set; }
 
     [JsonConverter(typeof(StringEnumConverter))]
     public PropTypeEnum PropType { get; set; }

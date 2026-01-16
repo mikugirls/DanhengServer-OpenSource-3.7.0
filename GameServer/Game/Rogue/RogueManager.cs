@@ -333,11 +333,12 @@ public async ValueTask HandleTakeRogueScoreReward(TakeRogueScoreRewardCsReq req)
        
             return new RogueGetVirtualItemInfo
     {
-        DKABGHHOODP = (uint)Player.Data.ImmersiveArtifact, // 沉浸券
+        DKABGHHOODP = (uint)(RogueInstance?.CurMoney ?? 0), // 沉浸券
         TalentPoint = (uint)Player.Data.TalentPoints,      // 技能点
         
         // BILEOOPHJEF 可能是某种特殊的活动积分，暂时设为 0
-        BILEOOPHJEF = 0 
+        // 核心修正：对应结算界面中的沉浸器显示
+        BILEOOPHJEF = (uint)Player.Data.ImmersiveArtifact
     };
         
     }

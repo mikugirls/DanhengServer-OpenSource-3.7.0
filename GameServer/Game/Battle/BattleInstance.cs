@@ -15,13 +15,41 @@ using EggLink.DanhengServer.Util;
 using LineupInfo = EggLink.DanhengServer.Database.Lineup.LineupInfo;
 
 namespace EggLink.DanhengServer.GameServer.Game.Battle;
-
+public delegate ValueTask OnMonsterKillDelegate(EntityMonster monster);
 public class BattleInstance(PlayerInstance player, LineupInfo lineup, List<StageConfigExcel> stages)
     : BasePlayerManager(player)
 {
     public BattleInstance(PlayerInstance player, LineupInfo lineup, List<EntityMonster> monsters) : this(player, lineup,
         new List<StageConfigExcel>())
-    {
+    {	if (player.SceneInstance != null)
+		{
+			int targetFloorId = player.SceneInstance.FloorId; 
+            int foundMappingId = 0;
+
+            // 遍历所有位面配置，寻找包含当前 FloorId 的那一个
+            foreach (var plane in GameData.MazePlaneData.Values)
+            {
+                // 注意：这里尝试匹配 StartFloorID 或者遍历 FloorID 列表（取决于你的 Excel 定义）
+                // 大多数私服架构中，MazePlaneExcel 包含 StartFloorID
+                if (plane.StartFloorID == targetFloorId || (plane.GetId() == player.SceneInstance.PlaneId))
+                {
+                    int pId = plane.PlaneID;
+                    // 执行运算映射：20001 -> 1101
+                    if (pId >= 20000 && pId < 21000) 
+                    {
+                        foundMappingId = pId - 18900;
+                    }
+                    else 
+                    {
+                        foundMappingId = pId % 10000;
+                    }
+                    break; 
+                }
+            }
+
+            this.MappingInfoId = foundMappingId;
+            Console.WriteLine($"[Battle-Fix] 当前层: {targetFloorId} | 匹配位面奖励 ID: {this.MappingInfoId}");
+		}
         if (player.ActivityManager!.TrialActivityInstance != null &&
             player.ActivityManager!.TrialActivityInstance.Data.CurTrialStageId != 0)
         {
@@ -44,7 +72,16 @@ public class BattleInstance(PlayerInstance player, LineupInfo lineup, List<Stage
             StageId = Stages[0].StageID;
         }
     }
+	 // --- 必须添加这两行 ---
+    public event OnMonsterKillDelegate? OnMonsterKill;
 
+    public async ValueTask TriggerMonsterKill(EntityMonster monster) 
+    {
+        if (OnMonsterKill != null) 
+        {
+            await OnMonsterKill.Invoke(monster);
+        }
+    }
     public int BattleId { get; set; } = ++player.NextBattleId;
     public int StaminaCost { get; set; }
     public int WorldLevel { get; set; }
@@ -57,7 +94,8 @@ public class BattleInstance(PlayerInstance player, LineupInfo lineup, List<Stage
     public BattleEndStatus BattleEndStatus { get; set; }
 
     public List<ItemData> MonsterDropItems { get; set; } = [];
-
+	// 新增：RAID / 副本结算奖励清单（由 DropManager 填充）
+	
     public List<StageConfigExcel> Stages { get; set; } = stages;
     public LineupInfo Lineup { get; set; } = lineup;
     public List<EntityMonster> EntityMonsters { get; set; } = [];
@@ -81,38 +119,20 @@ public class BattleInstance(PlayerInstance player, LineupInfo lineup, List<Stage
             await OnBattleEnd(this, BattleResult!);
     }
 
-    public ItemList GetDropItemList()
-    {
-        if (BattleEndStatus != BattleEndStatus.BattleEndWin) return new ItemList();
-        var list = new ItemList();
+    public List<ItemData> RaidRewardItems { get; set; } = []; // 用于存放副本和考核奖励
 
-        foreach (var item in MonsterDropItems) list.ItemList_.Add(item.ToProto());
+	public ItemList GetDropItemList()
+	{
+    var list = new ItemList();
+    // 如果战斗没赢，直接返回空
+    if (BattleEndStatus != BattleEndStatus.BattleEndWin) return list;
 
-        var t = System.Threading.Tasks.Task.Run(async () =>
-        {
-            foreach (var item in await Player.InventoryManager!.HandleMappingInfo(MappingInfoId, WorldLevel))
-                list.ItemList_.Add(item.ToProto());
-        });
+    // 简单汇总：小怪掉落 + DropManager 之前算好的 Raid 奖励
+    foreach (var item in MonsterDropItems) list.ItemList_.Add(item.ToProto());
+    foreach (var item in RaidRewardItems) list.ItemList_.Add(item.ToProto());
 
-        t.Wait();
-
-        if (CollegeConfigExcel == null ||
-            Player.BattleCollegeData?.FinishedCollegeIdList.Contains(CollegeConfigExcel.ID) != false)
-            return list; // if college excel is not null and college is not finished
-
-        // finish it 
-        Player.BattleCollegeData.FinishedCollegeIdList.Add(CollegeConfigExcel.ID);
-        var t2 = System.Threading.Tasks.Task.Run(async () =>
-        {
-            await Player.SendPacket(new PacketBattleCollegeDataChangeScNotify(Player));
-            foreach (var item in await Player.InventoryManager!.HandleReward(CollegeConfigExcel.RewardID))
-                list.ItemList_.Add(item.ToProto());
-        });
-
-        t2.Wait();
-
-        return list;
-    }
+    return list;
+	}
 
     public void AddBattleTarget(int key, int targetId, int progress, int totalProgress = 0)
     {

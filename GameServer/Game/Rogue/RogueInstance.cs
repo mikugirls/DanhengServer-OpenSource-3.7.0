@@ -10,8 +10,10 @@ using EggLink.DanhengServer.GameServer.Game.Rogue.Scene;
 using EggLink.DanhengServer.GameServer.Server.Packet.Send.Rogue;
 using EggLink.DanhengServer.Proto;
 using EggLink.DanhengServer.Util;
-
+using EggLink.DanhengServer.GameServer.Game.Scene.Entity;
+using EggLink.DanhengServer.Enums.Scene;
 namespace EggLink.DanhengServer.GameServer.Game.Rogue;
+using EggLink.DanhengServer.GameServer.Game.Scene;
 
 // --- 修复点 1: 补齐缺失的类定义声明 ---
 public class RogueInstance : BaseRogueInstance
@@ -49,7 +51,7 @@ public class RogueInstance : BaseRogueInstance
     #endregion
 
     #region Properties
-
+	public new int CurImmersionToken => (int)Player.Data.ImmersiveArtifact;
     public RogueStatus Status { get; set; } = RogueStatus.Doing;
     public int CurReachedRoom { get; set; }
 
@@ -145,7 +147,7 @@ public class RogueInstance : BaseRogueInstance
         await AddAeonBuff();
     }
 
-    public async ValueTask<RogueRoomInstance?> EnterRoom(int siteId)
+   public async ValueTask<RogueRoomInstance?> EnterRoom(int siteId)
     {
         var prevRoom = CurRoom;
         if (prevRoom != null)
@@ -170,6 +172,11 @@ public class RogueInstance : BaseRogueInstance
 
         await Player.SendPacket(new PacketSyncRogueMapRoomScNotify(CurRoom, AreaExcel.MapId));
 
+        // --- 【核心修复：刷新进度条】 ---
+        // 发送全量肉鸽状态包，强制客户端将 1/13 更新为当前进度
+        //await Player.SendPacket(new PacketSyncRogueStatusScNotify(this.Status));
+        // ------------------------------
+
         EventManager?.OnNextRoom();
         foreach (var miracle in RogueMiracles.Values) miracle.OnEnterNextRoom();
 
@@ -193,30 +200,82 @@ public class RogueInstance : BaseRogueInstance
     #endregion
 
     #region Handlers
+ // --- 新增：肉鸽专属的杀怪回调逻辑 ---
+private async ValueTask OnRogueMonsterKill(EntityMonster monster) 
+{
+    // 获取同组的物件（如沉浸器、肉鸽宝箱）
+    var relatedProps = monster.Scene.Entities.Values
+        .OfType<EntityProp>()
+        .Where(p => p.GroupId == monster.GroupId);
 
-   public override void OnBattleStart(BattleInstance battle)
+    foreach (var prop in relatedProps) 
+    {
+        // 逻辑：激活肉鸽奖励台或宝箱
+        if (prop.Excel.PropType == PropTypeEnum.PROP_ROGUE_CHEST || 
+            prop.Excel.PropType == PropTypeEnum.PROP_ROGUE_REWARD_OBJECT ||
+            prop.Excel.ID >= 60000) 
+        {
+            await prop.SetState(PropStateEnum.ChestClosed);
+            Console.WriteLine($"[Rogue Logic] 激活肉鸽奖励: {prop.Excel.ID}");
+        }
+    }
+}
+/// <summary>
+/// 【重构新增】处理肉鸽战斗胜利后的掉落奖励与祝福触发
+/// </summary>
+public async ValueTask HandleBattleWinRewards(BattleInstance battle)
+{
+    Console.WriteLine($"[Rogue] >>> 开始处理战斗奖励分发...");
+
+    bool isFinalBoss = CurRoom?.Excel.RogueRoomType == 7;
+
+    if (!isFinalBoss)
+    {
+        // 【修复点】直接乘以 Stages.Count，不要在那调 Add()
+        int waveCount = Math.Max(1, battle.Stages.Count); 
+        var money = Random.Shared.Next(20, 60) * waveCount;
+        
+        await GainMoney(money);
+        await RollBuff(1); 
+        Console.WriteLine($"[Rogue] 普通怪结算完成。获得碎片: {money}");
+    }
+
+    // 处理沉浸奖励 (Artifacts)
+    if (battle.MappingInfoId > 0)
+    {
+        Console.WriteLine($"[Rogue] 检测到 Mapping奖励 ID: {battle.MappingInfoId}，开始异步入库...");
+        var items = await Player.InventoryManager!.HandleMappingInfo(battle.MappingInfoId, Player.Data.WorldLevel);
+        battle.RaidRewardItems.AddRange(items); 
+        Console.WriteLine($"[Rogue] 沉浸奖励发放成功。");
+    }
+}
+public override void OnBattleStart(BattleInstance battle)
 {
     base.OnBattleStart(battle);
     if (CurRoom == null) return;
+	 // --- 核心关联点 ---
+    	// 肉鸽经理对自己说：只要这场战斗有怪死了，就叫我的 OnRogueMonsterKill 去干活
+    battle.OnMonsterKill += OnRogueMonsterKill;
+	        // --- 核心修复：确保模拟宇宙战斗结算不触发死锁的 MappingInfo 逻辑 ---
+        // 1. 强制将 MappingInfoId 设为 0。这样在发送 PVEBattleResultScRsp 时，
+        //    GetDropItemList() 会跳过那段带有 .Wait() 的异步死锁代码。
+    //battle.MappingInfoId = 0;
 
-    // 1. 准备基础数据
-    int progress = AreaExcel.AreaProgress; 
-    int difficulty = AreaExcel.Difficulty; 
-    
-    // 2. 动态计算目标等级 -> 给到 CustomLevel
-    // 这样 ToProto 会把这个正常的数字 (如 35) 塞进 MonsterParam.Level
-    int targetLevel = progress * 10 + (difficulty - 1) * 10 + 5 + (CurReachedRoom / 2);
-    battle.CustomLevel = targetLevel; 
-
-    // 3. 确定怪物组 ID (targetStageId)
+        // 2. 模拟宇宙战斗不需要扣除体力，强制设为 0 防止体力同步异常
+        //battle.StaminaCost = 0;
+    int progress = AreaExcel.AreaProgress;  // 世界编号
+    int difficulty = AreaExcel.Difficulty; // 1-5 难度
     int targetStageId = 0;
-    if (CurRoom.Excel.RogueRoomType == 7) 
+
+    if (CurRoom.Excel.RogueRoomType == 7) // 关底 BOSS 房间
     {
-        // 这里的计算公式生成 300101 这种 StageID
-        targetStageId = (int)((progress * 100000) + (difficulty * 100) + 1);
+        // 核心公式：80300 + (进度(2位)) + (难度(1位))
+        // 例如：世界6难度5 -> 80300000 + 60 + 5 = 80300065
+        targetStageId = 80300000 + (progress * 10) + difficulty;
     }
     else 
     {
+        // 普通房间：依然建议走查表逻辑，最稳妥
         int mapId = progress * 100 + difficulty;
         if (GameData.RogueMapData.TryGetValue(mapId, out var mapData))
         {
@@ -227,42 +286,51 @@ public class RogueInstance : BaseRogueInstance
         }
     }
 
-    // 4. 重要：同步更新 Stage 数据 (确保波次里有正确的怪)
+    // 应用 Stage 数据并刷新怪组
     if (targetStageId > 0)
     {
-        battle.StageId = targetStageId; // 设置主 ID
+        battle.StageId = targetStageId;
         if (GameData.StageConfigData.TryGetValue(targetStageId, out var stageConfig))
         {
-            // 必须重置 Stages 列表。
-            // 这样 ToProto 在执行 Stages.Select 时，生成的每一波 SceneMonsterWave 
-            // 都会带有正确的 BattleStageId (Tag 3)
             battle.Stages.Clear(); 
             battle.Stages.Add(stageConfig); 
         }
-    }
-}
-
-    public override async ValueTask OnBattleEnd(BattleInstance battle, PVEBattleResultCsReq req)
-    {
-        foreach (var miracle in RogueMiracles.Values) miracle.OnEndBattle(battle);
-
-        if (req.EndStatus != BattleEndStatus.BattleEndWin)
-        {
-            await QuitRogue();
-            return;
-        }
-
-        if (CurRoom!.NextSiteIds.Count == 0)
-        {
-            IsWin = true;
-            await Player.SendPacket(new PacketSyncRogueExploreWinScNotify());
-        }
         else
         {
-            await RollBuff(battle.Stages.Count);
-            await GainMoney(Random.Shared.Next(20, 60) * battle.Stages.Count);
+            // 如果报错，可以这里打印出来看看算出来的 ID 对不对
+            Console.WriteLine($"[Rogue ERROR] 无法加载 BOSS StageID: {targetStageId}");
         }
     }
+
+    // 等级同步 (使用之前算好的 targetLevel)
+    battle.CustomLevel = progress * 10 + (difficulty - 1) * 10 + 5 + (CurReachedRoom / 2);
+}
+
+public override async ValueTask OnBattleEnd(BattleInstance battle, PVEBattleResultCsReq req)
+{
+    foreach (var miracle in RogueMiracles.Values) miracle.OnEndBattle(battle);
+
+    // 失败处理
+    if (req.EndStatus != BattleEndStatus.BattleEndWin)
+    {
+        await QuitRogue();
+        return;
+    }
+
+    // --- 【关键点】这里只处理“赢了之后该去哪”，不再调用 RollBuff ---
+    
+    // 如果没有下一关了，说明是最终 BOSS 赢了
+    if (CurRoom!.NextSiteIds.Count == 0)
+    {
+        IsWin = true;
+        Console.WriteLine($"[Rogue] 检测到最终关卡胜利，准备发送通关通知...");
+        await Player.SendPacket(new PacketSyncRogueExploreWinScNotify());
+        
+        // 标记状态为完成，防止流程挂起
+        Status = RogueStatus.Finish;
+    }
+    // 普通关卡的奖励已经由 DropManager 提前发过了，这里什么都不用写
+}
 
     #endregion
 
@@ -337,7 +405,12 @@ public class RogueInstance : BaseRogueInstance
 
     public RogueVirtualItem ToVirtualItemInfo()
     {
-        return new RogueVirtualItem { RogueMoney = (uint)CurMoney };
+        return new RogueVirtualItem { RogueMoney = (uint)CurMoney,
+									 // 核心修正：对应 3.7.0 协议中的沉浸器总量字段
+        DAFALAOAOOI = (uint)CurImmersionToken, 
+        AMNKMBMHKDF = (uint)CurImmersionToken, // 兼容性冗余字段
+        BPJOAPFAFKK = (uint)CurImmersionToken  // 兼容性冗余字段
+									  };
     }
 
     public GameMiracleInfo ToMiracleInfo()
@@ -354,7 +427,7 @@ public class RogueInstance : BaseRogueInstance
         return proto;
     }
 
-    public RogueFinishInfo ToFinishInfo()
+   public RogueFinishInfo ToFinishInfo()
     {
         AreaExcel.ScoreMap.TryGetValue(CurReachedRoom, out var score);
         Player.RogueManager!.AddRogueScore(score);

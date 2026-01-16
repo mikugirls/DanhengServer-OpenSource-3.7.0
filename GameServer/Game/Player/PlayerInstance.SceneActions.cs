@@ -75,7 +75,7 @@ public partial class PlayerInstance
 
                 break;
            case PropTypeEnum.PROP_ROGUE_REWARD_OBJECT:
-    if (prop.Excel.ID == 8001)
+    
     {
         // 加上 ? 解决之前的 null 警告
         var rogueInstance = RogueManager?.RogueInstance; 
