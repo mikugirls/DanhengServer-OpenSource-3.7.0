@@ -74,41 +74,17 @@ public partial class PlayerInstance
                 }
 
                 break;
-           case PropTypeEnum.PROP_ROGUE_REWARD_OBJECT:
+           	case PropTypeEnum.PROP_ROGUE_REWARD_OBJECT:
     
-    {
-        // 加上 ? 解决之前的 null 警告
-        var rogueInstance = RogueManager?.RogueInstance; 
-        if (rogueInstance != null)
-        {
-            // 1. 检查券够不够
-            if (Data.ImmersiveArtifact >= 1)
-            {
-                // 2. 扣券并标记数据库保存
-                Data.ImmersiveArtifact -= 1;
-                EggLink.DanhengServer.Database.DatabaseHelper.ToSaveUidList.SafeAdd(Uid);
-
-                // 3. 执行我们在 RogueManager 里写好的动态发奖逻辑
-                // 它内部会自动根据世界和均衡等级给物品，不需要 rewardId 了
-                await RogueManager!.GrantImmersiveRewards();
-
-                // 4. 同步 UI（刷新券的数量）
-                await SendPacket(new PacketSyncRogueCommonVirtualItemInfoScNotify(rogueInstance));
-
-                // 5. 更新球的状态（熄灭）并广播给客户端
-                await prop.SetState(PropStateEnum.Open);
-                await SendPacket(new PacketGroupStateChangeScNotify(Data.EntryId, prop.GroupId, prop.State));
-            }
-            else
-            {
-                // 券不足的反馈
-                await SendPacket(new PacketRetcodeNotify(Retcode.RetItemNotEnough));
-                // 保持球是激活状态（亮的），让玩家以后还能来点
-                await prop.SetState(PropStateEnum.WaitActive);
-            }
-        }
-    }
-    break;
+    			{	
+        		if (player.DropManager != null)
+				{
+    			// 依然是这句话，DropManager 内部已经变聪明了
+    			await player.DropManager.GrantRogueImmersiveReward(rogueInstance);
+				}
+       
+    			}
+    			break;
             case PropTypeEnum.PROP_DESTRUCT:
                 if (newState == PropStateEnum.Closed) await prop.SetState(PropStateEnum.Open);
                 break;
