@@ -224,6 +224,12 @@ public class RogueInstance : BaseRogueInstance
         Status = RogueStatus.Finish;
         await Player.SendPacket(new PacketSyncRogueStatusScNotify(Status));
         await Player.SendPacket(new PacketSyncRogueFinishScNotify(ToFinishInfo()));
+		// 2. 【核心新增】如果赢了，调用 Manager 发奖励并保存进度
+        // 这一步会触发：发100星琼 + 解锁下一关 + 数据库保存
+        if (IsWin)
+        {
+            await Player.RogueManager!.FinishRogue(AreaExcel.RogueAreaID, true);
+        }
     }
     #endregion
 

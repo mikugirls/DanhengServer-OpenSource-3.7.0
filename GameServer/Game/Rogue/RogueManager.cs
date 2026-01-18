@@ -115,6 +115,32 @@ public class RogueManager(PlayerInstance player) : BasePlayerManager(player)
         await Player.SendPacket(new PacketStartRogueScRsp(Player));
     }
     // --- 【修改结束】 ---
+	// =========================================================================
+    // 【新增】通关结算：发奖励 + 解锁下一关 + 保存数据库
+    // =========================================================================
+    public async ValueTask FinishRogue(int currentAreaId, bool isWin)
+    {
+        if (!isWin) return;
+
+        Console.WriteLine($"[RogueManager] 玩家通关 AreaId: {currentAreaId}, 开始结算...");
+
+        // 1. 发放 100 星琼 (ItemId: 1)
+        await Player.InventoryManager!.AddItem(1, 100, notify: true);
+        Console.WriteLine("[RogueManager] 已发放通关奖励: 星琼 x100");
+
+        // 2. 解锁下一关逻辑
+        // 假设关卡 ID 是按 10 递增的 (110 -> 120 -> 130...)
+        // 如果当前打通的关卡 >= 记录的进度，说明是推图，进度 +10
+        if (currentAreaId >= Player.Data.RogueUnlockProgress)
+        {
+            // 比如当前是 110，打完变成 120 (解锁下一关)
+            Player.Data.RogueUnlockProgress = currentAreaId + 10;
+        }
+
+        // 3. 触发数据库保存
+        DatabaseHelper.ToSaveUidList.SafeAdd(Player.Uid);
+        Console.WriteLine($"[RogueManager] 进度已保存! 当前解锁至: {Player.Data.RogueUnlockProgress}");
+    }		
    private static readonly Dictionary<int, int[]> WorldToRelicSets = new()
     {
         { 1, [01, 02] }, // 世界3: 空间站(01), 仙舟(02)
@@ -312,10 +338,15 @@ public async ValueTask HandleTakeRogueScoreReward(TakeRogueScoreRewardCsReq req)
         };
     }
 
-    public static RogueAreaInfo ToAreaProto()
+   // 【修改】去掉 static，让它读取玩家进度
+    public RogueAreaInfo ToAreaProto()
     {
         var manager = GetCurrentManager();
         if (manager == null) return new RogueAreaInfo();
+
+        // 获取当前进度 (我们在 PlayerData 里初始设为了 110)
+        int progress = Player.Data.RogueUnlockProgress;
+
         return new RogueAreaInfo
         {
             RogueAreaList =
@@ -323,8 +354,17 @@ public async ValueTask HandleTakeRogueScoreReward(TakeRogueScoreRewardCsReq req)
                 manager.RogueAreaIDList.Select(x => new RogueArea
                 {
                     AreaId = (uint)x,
-                    AreaStatus = RogueAreaStatus.FirstPass,
-                    HasTakenReward = true
+                    // 【关键】如果 关卡ID <= 进度，状态设为 FirstPass (已解锁)
+                    // 否则设为 Close (未解锁)
+                  // 【核心修复】
+                    // 1. 如果 x < progress: 说明这一关已经打过去了 -> FirstPass (已通关)
+                    // 2. 如果 x == progress: 说明刚好解锁到这一关 -> Unlock (已解锁)
+                    // 3. 如果 x > progress: 说明是后面的关卡 -> Lock (锁定)
+					AreaStatus = x <= progress ? RogueAreaStatus.Unlock : RogueAreaStatus.Lock,
+                    
+                    // 【关键】设为 false，表示“首通奖励还没领”
+                    // 以后你写了奖励系统，把这里改成读取数据库状态即可
+                    HasTakenReward = false
                 })
             }
         };
