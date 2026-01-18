@@ -89,9 +89,10 @@ public class RogueManager(PlayerInstance player) : BasePlayerManager(player)
 
     #region Actions
 
+  // --- 【修改 StartRogue 方法】 ---
     public async ValueTask StartRogue(int areaId, int aeonId, List<int> disableAeonId, List<int> baseAvatarIds)
-    {
-        if (GetRogueInstance() != null) return;
+    {	Console.WriteLine($"[RogueDebug] 客户端请求进入: AreaId={areaId}, AeonId={aeonId}");
+         if (GetRogueInstance() != null) return;
         GameData.RogueAreaConfigData.TryGetValue(areaId, out var area);
         GameData.RogueAeonData.TryGetValue(aeonId, out var aeon);
 
@@ -113,6 +114,7 @@ public class RogueManager(PlayerInstance player) : BasePlayerManager(player)
         await Player.SendPacket(new PacketSyncRogueStatusScNotify(RogueInstance.Status));
         await Player.SendPacket(new PacketStartRogueScRsp(Player));
     }
+    // --- 【修改结束】 ---
    private static readonly Dictionary<int, int[]> WorldToRelicSets = new()
     {
         { 1, [01, 02] }, // 世界3: 空间站(01), 仙舟(02)

@@ -106,6 +106,18 @@ public class BattleManager(PlayerInstance player) : BasePlayerManager(player)
                 {
                     WorldLevel = Player.Data.WorldLevel
                 };
+			// --- [核心修复逻辑：在这里取值] ---
+			// 逻辑：从你这次打中的怪物列表里，找第一个带有副本 ID 的怪
+			var firstDungeonMonster = targetList.FirstOrDefault(m => m.Info.FarmElementID > 0);
+
+			if (firstDungeonMonster != null)
+			{
+			// 将怪物 Info 里保存的 FarmElementID (1101) 传给战斗实例
+			battleInstance.MappingInfoId = firstDungeonMonster.Info.FarmElementID;
+    
+			// 打印一行日志，重启后你可以看控制台有没有这行输出
+			Console.WriteLine($"[BattleManager] 副本战斗识别成功：ID {battleInstance.MappingInfoId}");
+			}	
 
             if (NextBattleStageConfig != null)
             {

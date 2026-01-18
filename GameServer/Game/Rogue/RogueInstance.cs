@@ -12,10 +12,9 @@ using EggLink.DanhengServer.Proto;
 using EggLink.DanhengServer.Util;
 using EggLink.DanhengServer.GameServer.Game.Scene.Entity;
 using EggLink.DanhengServer.Enums.Scene;
-namespace EggLink.DanhengServer.GameServer.Game.Rogue;
-using EggLink.DanhengServer.GameServer.Game.Scene;
 
-// --- 修复点 1: 补齐缺失的类定义声明 ---
+namespace EggLink.DanhengServer.GameServer.Game.Rogue;
+
 public class RogueInstance : BaseRogueInstance
 {
     #region Initialization
@@ -30,19 +29,14 @@ public class RogueInstance : BaseRogueInstance
         CurLineup = player.LineupManager!.GetCurLineup()!;
         EventManager = new RogueEventManager(player, this);
 
-       // --- 【核心修改开始】 ---
-        
-        // 1. 获取正确的 MapId (这是之前一直缺失的关键环节)
+        // 1. 获取 MapId (统一长图骨架)
         int mapId = GetMapIdFromAreaId(areaExcel.RogueAreaID);
         
-        // 2. 容错逻辑：如果找不到特定 MapId (比如 201)，回退到基础版 (比如 200)
-        // 防止新出的难度还没有配地图数据导致崩服
+        // 2. 检查 MapId
         if (!GameData.RogueMapData.ContainsKey(mapId))
         {
-            // 尝试回退到整百 ID (e.g., 131 -> 101, 141 -> 200 ??? 这里的逻辑视具体数据而定)
-            // 根据你的数据，13x 都是 101，14x 是 20x。
-            // 简单处理：如果找不到，打个日志，不用硬回退，方便发现问题。
-            Console.WriteLine($"[Rogue Error] 找不到 MapId: {mapId} 的配置数据！");
+            Console.WriteLine($"[Rogue Error] 找不到 MapId: {mapId}，紧急回退到 1");
+            mapId = 1; 
         }
 
         // 3. 加载房间
@@ -50,44 +44,39 @@ public class RogueInstance : BaseRogueInstance
         {
             foreach (var item in mapRooms.Values)
             {
-                // 这里调用你刚刚修改好的 RogueRoomInstance 新构造函数
-                // 它会自动计算出正确的 Boss ID 和 MonsterLevel
+                // 创建房间实例 (所有逻辑都在 RogueRoomInstance 内部处理了)
                 var roomInstance = new RogueRoomInstance(item, areaExcel);
-                
+                roomInstance.MapId = mapId; 
+
                 RogueRooms.Add(item.SiteID, roomInstance);
-                
                 if (item.IsStart) StartSiteId = item.SiteID;
             }
         }
-        // --- 【核心修改结束】 ---
-
-        // 初始化 Bonus 动作
-        var action = new RogueActionInstance
+        else
         {
-            QueuePosition = CurActionQueuePosition
-        };
-        action.SetBonus();
+            Console.WriteLine($"[Rogue Critical] 无法加载房间！MapId: {mapId}");
+        }
 
+        // 初始化 Bonus
+        var action = new RogueActionInstance { QueuePosition = CurActionQueuePosition };
+        action.SetBonus();
         RogueActions.Add(CurActionQueuePosition, action);
     }
 
     #endregion
 
     #region Properties
-	public new int CurImmersionToken => (int)Player.Data.ImmersiveArtifact;
+    public new int CurImmersionToken => (int)Player.Data.ImmersiveArtifact;
     public RogueStatus Status { get; set; } = RogueStatus.Doing;
     public int CurReachedRoom { get; set; }
-
     public RogueAeonExcel AeonExcel { get; set; }
     public RogueAreaConfigExcel AreaExcel { get; set; }
     public Dictionary<int, RogueRoomInstance> RogueRooms { get; set; } = [];
     public RogueRoomInstance? CurRoom { get; set; }
     public int StartSiteId { get; set; }
-
     #endregion
 
     #region Buffs
-
     public override async ValueTask RollBuff(int amount)
     {
         if (CurRoom!.Excel.RogueRoomType == 6)
@@ -124,22 +113,14 @@ public class RogueInstance : BaseRogueInstance
 
         var needAeonBuffCount = (CurAeonBuffCount + CurAeonEnhanceCount) switch
         {
-            0 => 3,
-            1 => 6,
-            2 => 10,
-            3 => 14,
-            _ => 100
+            0 => 3, 1 => 6, 2 => 10, 3 => 14, _ => 100
         };
 
         if (curAeonBuffCount >= needAeonBuffCount)
         {
             RogueBuffSelectMenu menu = new(this)
             {
-                QueueAppend = 2,
-                HintId = hintId,
-                RollMaxCount = 0,
-                RollFreeCount = 0,
-                IsAeonBuff = true
+                QueueAppend = 2, HintId = hintId, RollMaxCount = 0, RollFreeCount = 0, IsAeonBuff = true
             };
 
             if (CurAeonBuffCount < 1)
@@ -159,116 +140,77 @@ public class RogueInstance : BaseRogueInstance
             await UpdateMenu();
         }
     }
-
     #endregion
 
     #region Methods
-	// --- 把这个方法加到 RogueInstance 类里 ---
+    public async ValueTask HandleBattleWinRewards(BattleInstance battle)
+    {
+        bool isFinalBoss = CurRoom?.Excel.RogueRoomType == 7;
+        if (!isFinalBoss)
+        {
+            int waveCount = Math.Max(1, battle.Stages.Count);
+            var money = Random.Shared.Next(20, 60) * waveCount;
+            await GainMoney(money);
+            await RollBuff(1); 
+        }
+    }
+
+    // --- 核心修改：统一使用长图 Map ID (200) ---
     private int GetMapIdFromAreaId(int areaId)
     {
-        // 世界 1 & 2
+        // 教学关 (7关)
         if (areaId == 100) return 1;
         if (areaId == 110) return 2;
         if (areaId == 120) return 3;
 
-        // 世界 3 (雅利洛) - Area 13x -> Map 101
-        if (areaId >= 130 && areaId < 140) return 101; 
+        // 正式世界 (World 3 - 9)
+        // 全部统一返回 200 (因为 Map 200 确定是 13 关的长图)
+        // 具体的怪物和场景风格，由 RogueRoomInstance 内部的 worldIndex 决定
+        if (areaId >= 130 && areaId < 200) return 200; 
 
-        // 世界 4 (史瓦罗) - Area 14x -> Map 200 + Difficulty
-        if (areaId >= 140 && areaId < 150)
-        {
-            int difficulty = areaId % 10; 
-            return 200 + difficulty; 
-        }
-
-        // 世界 5 (卡芙卡) - Area 15x -> Map 300 + Difficulty
-        if (areaId >= 150 && areaId < 160)
-        {
-            int difficulty = areaId % 10;
-            return 300 + difficulty;
-        }
-
-        // 世界 6 (可可利亚) - Area 16x -> Map 401 + Difficulty
-        if (areaId >= 160 && areaId < 170)
-        {
-            // 注意：Map 401 起步，不是 400
-            int difficulty = areaId % 10; 
-            return 401 + difficulty; // 如果难度1是160，那就是 401
-        }
-
-        // 世界 7 (玄鹿) - Area 17x -> Map 501 + Difficulty
-        if (areaId >= 170 && areaId < 180)
-        {
-            int difficulty = areaId % 10;
-            return 501 + difficulty;
-        }
-
-        // 世界 8 - Area 18x -> Map 601 + Difficulty
-        if (areaId >= 180 && areaId < 190)
-        {
-            int difficulty = areaId % 10;
-            return 601 + difficulty;
-        }
-
-        // 世界 9 - Area 19x -> Map 701 + Difficulty
-        if (areaId >= 190 && areaId < 200)
-        {
-            int difficulty = areaId % 10;
-            return 701 + difficulty;
-        }
-        
-        // 无尽模式等其他 ID
+        // DLC
         if (areaId >= 10100) return 10001; 
 
-        return 1; // 默认
+        return 1;
     }
+
     public override async ValueTask UpdateMenu(int position = 0)
     {
         await base.UpdateMenu(position);
         await AddAeonBuff();
     }
 
-  public async ValueTask<RogueRoomInstance?> EnterRoom(int siteId)
-{
-    var prevRoom = CurRoom;
-    if (prevRoom != null)
+    public async ValueTask<RogueRoomInstance?> EnterRoom(int siteId)
     {
-        // 检查连通性 (防止飞得太离谱)
-        if (!prevRoom.NextSiteIds.Contains(siteId)) return null;
+        var prevRoom = CurRoom;
+        if (prevRoom != null)
+        {
+            if (!prevRoom.NextSiteIds.Contains(siteId)) return null;
+            prevRoom.Status = RogueRoomStatus.Finish;
+            await Player.SendPacket(new PacketSyncRogueMapRoomScNotify(prevRoom, prevRoom.MapId));
+        }
 
-        // 【保留原逻辑】：强制把上一关设为完成
-        // 这样你就可以“穿墙”，不打怪直接进下一关（方便测试）
-        prevRoom.Status = RogueRoomStatus.Finish;
+        CurReachedRoom++;
+        if (!RogueRooms.TryGetValue(siteId, out var nextRoom)) return null;
 
-        // 【只改这里】：AreaExcel.MapId 是 0，必须改！
-        // 如果你改了 RogueRoomInstance，这里直接用 prevRoom.MapId
-        // 如果没改，就用 GetMapIdFromAreaId(AreaExcel.RogueAreaID)
-        // 为了稳妥，这里假设你已经在 RogueRoomInstance 里加了 MapId 字段
-        await Player.SendPacket(new PacketSyncRogueMapRoomScNotify(prevRoom, prevRoom.MapId));
+        CurRoom = nextRoom;
+        CurRoom.Status = RogueRoomStatus.Play;
+
+        await Player.EnterScene(CurRoom.Excel.MapEntrance, 0, false);
+
+        var anchor = Player.SceneInstance!.FloorInfo?.GetAnchorInfo(CurRoom.Excel.GroupID, 1);
+        if (anchor != null)
+        {
+            Player.Data.Pos = anchor.ToPositionProto();
+            Player.Data.Rot = anchor.ToRotationProto();
+        }
+
+        await Player.SendPacket(new PacketSyncRogueMapRoomScNotify(CurRoom, CurRoom.MapId));
+        EventManager?.OnNextRoom();
+        foreach (var miracle in RogueMiracles.Values) miracle.OnEnterNextRoom();
+
+        return CurRoom;
     }
-
-    CurReachedRoom++;
-    CurRoom = RogueRooms[siteId];
-    CurRoom.Status = RogueRoomStatus.Play;
-
-    await Player.EnterScene(CurRoom.Excel.MapEntrance, 0, false);
-
-    var anchor = Player.SceneInstance!.FloorInfo?.GetAnchorInfo(CurRoom.Excel.GroupID, 1);
-    if (anchor != null)
-    {
-        Player.Data.Pos = anchor.ToPositionProto();
-        Player.Data.Rot = anchor.ToRotationProto();
-    }
-
-    // 【只改这里】：同上，修复 MapId 为 0 的问题
-    await Player.SendPacket(new PacketSyncRogueMapRoomScNotify(CurRoom, CurRoom.MapId));
-
-    // 下面保持不变
-    EventManager?.OnNextRoom();
-    foreach (var miracle in RogueMiracles.Values) miracle.OnEnterNextRoom();
-
-    return CurRoom;
-}
 
     public async ValueTask LeaveRogue()
     {
@@ -283,110 +225,127 @@ public class RogueInstance : BaseRogueInstance
         await Player.SendPacket(new PacketSyncRogueStatusScNotify(Status));
         await Player.SendPacket(new PacketSyncRogueFinishScNotify(ToFinishInfo()));
     }
-
     #endregion
 
     #region Handlers
- // --- 新增：肉鸽专属的杀怪回调逻辑 ---
-private async ValueTask OnRogueMonsterKill(EntityMonster monster) 
-{
-    // 获取同组的物件（如沉浸器、肉鸽宝箱）
-    var relatedProps = monster.Scene.Entities.Values
-        .OfType<EntityProp>()
-        .Where(p => p.GroupId == monster.GroupId);
 
-    foreach (var prop in relatedProps) 
+    private async ValueTask OnRogueMonsterKill(EntityMonster monster) 
     {
-        // 逻辑：激活肉鸽奖励台或宝箱
-        if (prop.Excel.PropType == PropTypeEnum.PROP_ROGUE_CHEST || 
-            prop.Excel.PropType == PropTypeEnum.PROP_ROGUE_REWARD_OBJECT ||
-            prop.Excel.ID >= 60000) 
+        var relatedProps = monster.Scene.Entities.Values.OfType<EntityProp>().Where(p => p.GroupId == monster.GroupId);
+        foreach (var prop in relatedProps) 
         {
-            await prop.SetState(PropStateEnum.ChestClosed);
-            Console.WriteLine($"[Rogue Logic] 激活肉鸽奖励: {prop.Excel.ID}");
+            if (prop.Excel.PropType == PropTypeEnum.PROP_ROGUE_CHEST || 
+                prop.Excel.PropType == PropTypeEnum.PROP_ROGUE_REWARD_OBJECT ||
+                prop.Excel.ID >= 60000) 
+            {
+                await prop.SetState(PropStateEnum.ChestClosed);
+            }
         }
     }
-}
-/// <summary>
-/// 【重构新增】处理肉鸽战斗胜利后的掉落奖励与祝福触发
-/// </summary>
-public async ValueTask HandleBattleWinRewards(BattleInstance battle)
-{
-    Console.WriteLine($"[Rogue] >>> 开始处理战斗奖励分发...");
 
-    bool isFinalBoss = CurRoom?.Excel.RogueRoomType == 7;
-
-    if (!isFinalBoss)
+ public override void OnBattleStart(BattleInstance battle)
     {
-        // 【修复点】直接乘以 Stages.Count，不要在那调 Add()
-        int waveCount = Math.Max(1, battle.Stages.Count); 
-        var money = Random.Shared.Next(20, 60) * waveCount;
+        base.OnBattleStart(battle);
         
-        await GainMoney(money);
-        await RollBuff(1); 
-        Console.WriteLine($"[Rogue] 普通怪结算完成。获得碎片: {money}");
-    }
+        Console.WriteLine($"[RogueDebug] OnBattleStart 被调用! CurRoom 是否为空: {(CurRoom == null ? "是" : "否")}");
+        if (CurRoom == null) return;
 
-    // 处理沉浸奖励 (Artifacts)
-    if (battle.MappingInfoId > 0)
-    {
-       Console.WriteLine($"[Rogue] 关底 BOSS 结算，跳过普通奖励。");
-    }
-}
-public override void OnBattleStart(BattleInstance battle)
-{
-    base.OnBattleStart(battle);
-    if (CurRoom == null) return;
+        // 1. 基础设置
+        battle.OnMonsterKill += OnRogueMonsterKill;
+        battle.MappingInfoId = 0;
+        battle.StaminaCost = 0;
 
-    // 1. 基础设置
-    battle.OnMonsterKill += OnRogueMonsterKill;
-    battle.MappingInfoId = 0;
-    battle.StaminaCost = 0;
+        // 2. 准备基础数据 (只在这里定义一次！)
+        int worldIndex = (AreaExcel.RogueAreaID / 10) % 10;
+        int difficulty = AreaExcel.Difficulty; 
+        if (difficulty == 0) difficulty = 1;
 
-    // --- 【修改点 1：完全移除 StageID 计算】 ---
-    // 既然模拟宇宙是“击打出怪”，实体本身通常带着 ID，或者系统允许 StageID 为 0。
-    // 我们强制不设置 battle.StageId，防止算错 ID 导致进不去战斗。
-    
-    // 只计算等级，保证怪物强度随层数提升
-    // 公式：进度*10 + 难度补正 + 基础5 + 层数成长
-    int targetLevel = (AreaExcel.AreaProgress * 10) + ((AreaExcel.Difficulty - 1) * 10) + 5 + (CurReachedRoom / 2);
-    
-    // 优先用房间配置的等级，没有则用计算值
-    battle.CustomLevel = CurRoom.MonsterLevel > 0 ? CurRoom.MonsterLevel : targetLevel;
-    
-    Console.WriteLine($"[Rogue] 战斗开始 (StageID保持默认/实体值), 设定等级: {battle.CustomLevel}");
-}
-public override async ValueTask OnBattleEnd(BattleInstance battle, PVEBattleResultCsReq req)
-{
-    foreach (var miracle in RogueMiracles.Values) miracle.OnEndBattle(battle);
-
-    // 失败处理
-    if (req.EndStatus != BattleEndStatus.BattleEndWin)
-    {
-        await QuitRogue();
-        return;
-    }
-
-    // --- 【关键点】这里只处理“赢了之后该去哪”，不再调用 RollBuff ---
-    
-    // 如果没有下一关了，说明是最终 BOSS 赢了
-    if (CurRoom!.NextSiteIds.Count == 0)
-    {
-        IsWin = true;
-        Console.WriteLine($"[Rogue] 检测到最终关卡胜利，准备发送通关通知...");
-        // await Player.SendPacket(new PacketSyncRogueExploreWinScNotify());
-		// 标记状态为完成，防止流程挂起
-        Status = RogueStatus.Finish;
-        await QuitRogue();
+        // 3. 【等级核心修复】
+        // 直接读取 Excel 的 RecommendLevel
+        int baseLevel = AreaExcel.RecommendLevel;
         
-    }
-    // 普通关卡的奖励已经由 DropManager 提前发过了，这里什么都不用写
-}
+        // 兜底：如果表里是 0，就用备用公式
+        if (baseLevel == 0) 
+        {
+             // 备用公式：世界3=35, 往后每世界+5; 难度每级+10
+             baseLevel = 35 + ((worldIndex > 3 ? worldIndex - 3 : 0) * 5) + ((difficulty - 1) * 10);
+        }
 
+        // 加上层数微量成长 (每2层+1级)
+        int targetLevel = baseLevel + (CurReachedRoom / 2);
+        
+        // 赋值
+        battle.CustomLevel = CurRoom.MonsterLevel > 0 ? CurRoom.MonsterLevel : targetLevel;
+        
+        Console.WriteLine($"[RogueLevel] 战斗等级修正 -> 推荐:{baseLevel} 最终:{battle.CustomLevel} (世界:{worldIndex})");
+
+        // 4. 【BOSS 注入逻辑】
+        bool isBossStage = CurRoom.Excel.RogueRoomType == 7 || CurRoom.SiteId == 13;
+
+        if (isBossStage) 
+        {
+            Console.WriteLine($"[RogueDebug] 判定为BOSS战 (SiteId: {CurRoom.SiteId}, Type: {CurRoom.Excel.RogueRoomType})");
+            
+            // 默认公式
+            int targetStageId = 80300000 + (worldIndex * 10) + difficulty;
+
+            // [双重保险] 明确指定 ID，防止算错
+            if (worldIndex == 3) targetStageId = 80300031; // 杰帕德
+            if (worldIndex == 4) targetStageId = 80300041; // 史瓦罗
+
+            Console.WriteLine($"[RogueDebug] BOSS战注入 -> World: {worldIndex}, TargetStage: {targetStageId}");
+
+            if (targetStageId > 0 && GameData.StageConfigData.TryGetValue(targetStageId, out var stageConfig))
+            {
+                battle.StageId = targetStageId;
+                if (battle.Stages != null)
+                {
+                    battle.Stages.Clear(); 
+                    battle.Stages.Add(stageConfig); 
+                    Console.WriteLine($"[RogueDebug] 注入成功!");
+                }
+            }
+            else
+            {
+                Console.WriteLine($"[RogueDebug] 错误: 数据库里没有 {targetStageId} 这个 Stage!");
+            }
+        }
+        else
+        {
+            Console.WriteLine($"[RogueDebug] 普通战斗: SiteId={CurRoom.SiteId}, Type={CurRoom.Excel.RogueRoomType}");
+        }
+        
+        Console.WriteLine($"[Rogue] 战斗开始. Level: {battle.CustomLevel}, Final StageID: {battle.StageId}");
+    }
+
+    public override async ValueTask OnBattleEnd(BattleInstance battle, PVEBattleResultCsReq req)
+    {
+        foreach (var miracle in RogueMiracles.Values) miracle.OnEndBattle(battle);
+
+        if (req.EndStatus != BattleEndStatus.BattleEndWin)
+        {
+            await QuitRogue();
+            return;
+        }
+
+        if (CurRoom!.NextSiteIds.Count == 0)
+        {
+            IsWin = true;
+            Status = RogueStatus.Finish;
+            await QuitRogue();
+        }
+        else
+        {
+            int waveCount = Math.Max(1, battle.Stages.Count);
+            var money = Random.Shared.Next(20, 60) * waveCount;
+            await GainMoney(money);
+            await RollBuff(1);
+        }
+    }
     #endregion
 
     #region Serialization
-
+    // (序列化代码保持不变，为节省篇幅省略，请保留你原文件中的 Serialization 区域)
     public RogueCurrentInfo ToProto()
     {
         var proto = new RogueCurrentInfo
@@ -398,18 +357,11 @@ public override async ValueTask OnBattleEnd(BattleInstance battle, PVEBattleResu
             RogueBuffInfo = ToBuffInfo(),
             VirtualItemInfo = ToVirtualItemInfo(),
             RogueMap = ToMapInfo(),
-            ModuleInfo = new RogueModuleInfo
-            {
-                ModuleIdList = { 1, 2, 3, 4, 5 }
-            },
+            ModuleInfo = new RogueModuleInfo { ModuleIdList = { 1, 2, 3, 4, 5 } },
             IsExploreWin = IsWin
         };
-
-        if (RogueActions.Count > 0)
-            proto.PendingAction = RogueActions.First().Value.ToProto();
-        else
-            proto.PendingAction = new RogueCommonPendingAction();
-
+        if (RogueActions.Count > 0) proto.PendingAction = RogueActions.First().Value.ToProto();
+        else proto.PendingAction = new RogueCommonPendingAction();
         return proto;
     }
 
@@ -422,13 +374,10 @@ public override async ValueTask OnBattleEnd(BattleInstance battle, PVEBattleResu
             AreaId = (uint)AreaExcel.RogueAreaID,
             MapId = (uint)(CurRoom?.MapId ?? GetMapIdFromAreaId(AreaExcel.RogueAreaID))
         };
-
-        foreach (var room in RogueRooms) 
-            proto.RoomList.Add(room.Value.ToProto());
-
+        foreach (var room in RogueRooms) proto.RoomList.Add(room.Value.ToProto());
         return proto;
     }
-
+    // ... (保留你原文件后面的 ToAeonInfo 等方法)
     public GameAeonInfo ToAeonInfo()
     {
         return new GameAeonInfo
@@ -443,25 +392,13 @@ public override async ValueTask OnBattleEnd(BattleInstance battle, PVEBattleResu
     {
         var proto = new RogueLineupInfo();
         foreach (var avatar in CurLineup!.BaseAvatars!) proto.BaseAvatarIdList.Add((uint)avatar.BaseAvatarId);
-
-        proto.ReviveInfo = new RogueReviveInfo
-        {
-            RogueReviveCost = new ItemCostData
-            {
-                ItemList = { new ItemCost { PileItem = new PileItem { ItemId = 31, ItemNum = (uint)CurReviveCost } } }
-            }
-        };
+        proto.ReviveInfo = new RogueReviveInfo { RogueReviveCost = new ItemCostData { ItemList = { new ItemCost { PileItem = new PileItem { ItemId = 31, ItemNum = (uint)CurReviveCost } } } } };
         return proto;
     }
 
     public RogueVirtualItem ToVirtualItemInfo()
     {
-        return new RogueVirtualItem { RogueMoney = (uint)CurMoney,
-									 // 核心修正：对应 3.7.0 协议中的沉浸器总量字段
-        DAFALAOAOOI = (uint)CurImmersionToken, 
-        AMNKMBMHKDF = (uint)CurImmersionToken, // 兼容性冗余字段
-        BPJOAPFAFKK = (uint)CurImmersionToken  // 兼容性冗余字段
-									  };
+        return new RogueVirtualItem { RogueMoney = (uint)CurMoney, DAFALAOAOOI = (uint)CurImmersionToken, AMNKMBMHKDF = (uint)CurImmersionToken, BPJOAPFAFKK = (uint)CurImmersionToken };
     }
 
     public GameMiracleInfo ToMiracleInfo()
@@ -478,11 +415,10 @@ public override async ValueTask OnBattleEnd(BattleInstance battle, PVEBattleResu
         return proto;
     }
 
-   public RogueFinishInfo ToFinishInfo()
+    public RogueFinishInfo ToFinishInfo()
     {
         AreaExcel.ScoreMap.TryGetValue(CurReachedRoom, out var score);
         Player.RogueManager!.AddRogueScore(score);
-
         return new RogueFinishInfo
         {
             ScoreId = (uint)score,
@@ -490,21 +426,11 @@ public override async ValueTask OnBattleEnd(BattleInstance battle, PVEBattleResu
             IsWin = IsWin,
             RecordInfo = new RogueRecordInfo
             {
-                AvatarList =
-                {
-                    CurLineup!.BaseAvatars!.Select(avatar => new RogueRecordAvatar
-                    {
-                        Id = (uint)avatar.BaseAvatarId,
-                        AvatarType = AvatarType.AvatarFormalType,
-                        Level = (uint)(Player.AvatarManager!.GetFormalAvatar(avatar.BaseAvatarId)?.Level ?? 0),
-                        Slot = (uint)CurLineup!.BaseAvatars!.IndexOf(avatar)
-                    })
-                },
+                AvatarList = { CurLineup!.BaseAvatars!.Select(avatar => new RogueRecordAvatar { Id = (uint)avatar.BaseAvatarId, AvatarType = AvatarType.AvatarFormalType, Level = (uint)(Player.AvatarManager!.GetFormalAvatar(avatar.BaseAvatarId)?.Level ?? 0), Slot = (uint)CurLineup!.BaseAvatars!.IndexOf(avatar) }) },
                 BuffList = { RogueBuffs.Select(buff => buff.ToProto()) },
                 MiracleList = { RogueMiracles.Values.Select(miracle => (uint)miracle.MiracleId) }
             }
         };
     }
-
     #endregion
-} // --- 修复点 2: 确保类定义闭合 ---
+}

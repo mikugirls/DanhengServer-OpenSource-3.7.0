@@ -29,7 +29,9 @@ public class EntityMonster(
     public MonsterInfo Info { get; set; } = info;
     public SceneBuff? TempBuff { get; set; }
     public bool IsAlive { get; private set; } = true;
-
+	// --- [修改点 1: 新增字段] ---
+    // 这个字段用来在战斗开始时交给 BattleInstance
+    public int FarmElementId { get; set; } = info.FarmElementID;
     public int EventId { get; set; } = info.EventID;
     public int CustomStageId { get; set; } = 0;
 

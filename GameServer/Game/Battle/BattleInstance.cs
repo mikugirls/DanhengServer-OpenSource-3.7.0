@@ -23,32 +23,17 @@ public class BattleInstance(PlayerInstance player, LineupInfo lineup, List<Stage
         new List<StageConfigExcel>())
     {	if (player.SceneInstance != null)
 		{
-			int targetFloorId = player.SceneInstance.FloorId; 
-            int foundMappingId = 0;
+			var dungeonMonster = monsters.FirstOrDefault(m => m.Info.FarmElementID > 0);
+    
+		if (dungeonMonster != null)
+			{
+			// 如果打的是量子 BOSS，Info.FarmElementID 已经是 1101 了
+			this.MappingInfoId = dungeonMonster.Info.FarmElementID;
+			Console.WriteLine($"[Battle-Fix] 自动从怪物属性提取奖励 ID: {this.MappingInfoId}");
+			}
 
-            // 遍历所有位面配置，寻找包含当前 FloorId 的那一个
-            foreach (var plane in GameData.MazePlaneData.Values)
-            {
-                // 注意：这里尝试匹配 StartFloorID 或者遍历 FloorID 列表（取决于你的 Excel 定义）
-                // 大多数私服架构中，MazePlaneExcel 包含 StartFloorID
-                if (plane.StartFloorID == targetFloorId || (plane.GetId() == player.SceneInstance.PlaneId))
-                {
-                    int pId = plane.PlaneID;
-                    // 执行运算映射：20001 -> 1101
-                    if (pId >= 20000 && pId < 21000) 
-                    {
-                        foundMappingId = pId - 18900;
-                    }
-                    else 
-                    {
-                        foundMappingId = pId % 10000;
-                    }
-                    break; 
-                }
-            }
-
-            this.MappingInfoId = foundMappingId;
-            Console.WriteLine($"[Battle-Fix] 当前层: {targetFloorId} | 匹配位面奖励 ID: {this.MappingInfoId}");
+            
+            Console.WriteLine($"[Battle-Fix] 当前层: 匹配位面奖励 ID: {this.MappingInfoId}");
 		}
         if (player.ActivityManager!.TrialActivityInstance != null &&
             player.ActivityManager!.TrialActivityInstance.Data.CurTrialStageId != 0)

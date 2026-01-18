@@ -14,10 +14,12 @@ public class RogueAreaConfigExcel : ExcelResource
 
     // 难度 (1, 2, 3, 4, 5)
     public int Difficulty { get; set; }
-
+	// --- 【新增这行】 ---
+    public int RecommendLevel { get; set; }
     // 首通奖励 ID
     public int FirstReward { get; set; }
-
+	
+	public Dictionary<int, int> DisplayMonsterMap { get; set; } = new();
     // 沉浸器掉落显示 ID (关键字段)
     public int MonsterEliteDropDisplayID { get; set; }
 

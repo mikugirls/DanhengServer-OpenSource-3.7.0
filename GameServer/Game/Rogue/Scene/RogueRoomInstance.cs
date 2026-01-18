@@ -8,73 +8,111 @@ namespace EggLink.DanhengServer.GameServer.Game.Rogue.Scene;
 public class RogueRoomInstance
 {
     public int MonsterLevel { get; set; } 
-
-    // --- 新增：保存当前地图ID，方便调试和逻辑判断 ---
     public int MapId { get; set; }
 
-    /// <summary>
-    /// 初始化模拟宇宙房间
-    /// </summary>
-    /// <param name="excel">来自 RogueMap.json 的点位信息 (IsStart, PosX, NextSiteIDList等)</param>
-    /// <param name="areaConfig">传入完整的区域配置以获取难度和进度</param>
     public RogueRoomInstance(RogueMapExcel excel, RogueAreaConfigExcel areaConfig)
     {
         SiteId = excel.SiteID;
         NextSiteIds = excel.NextSiteIDList;
-        MapId = excel.RogueMapID; // 记录 MapID
-
-        // 初始状态：起点设为解锁，其余锁定
+        MapId = excel.RogueMapID;
+        
         Status = excel.IsStart ? RogueRoomStatus.Unlock : RogueRoomStatus.Lock;
 
-        // --- 核心计算：房间前缀 (Prefix) ---
-        // 我们发现房间ID = Prefix * 100 + SiteID
-        // 比如 MapID 200 -> Prefix 1111 -> Room 111101
-        int roomPrefix = GetRoomPrefixByMapId(MapId);
+        // --- 1. 获取世界索引 ---
+        int areaId = areaConfig.RogueAreaID; 
+        int worldIndex = (areaId / 10) % 10; 
 
-        // --- 核心计算：真正的 RoomID ---
-        // 直接拼接，不需要去查随机池子（除非你想做随机房间，那是另一回事）
-        // 对于 SiteID=1 (起点)，通常是例外，可能直接用 100/201 等简单ID，
-        // 但大部分中间房间都遵循 Prefix * 100 + SiteID
-        
-        // 尝试直接计算 ID
-        int calculatedRoomId = roomPrefix * 100 + SiteId;
-
-        // 验证一下这个 ID 是否存在于 RogueRoom 表中
-        if (GameData.RogueRoomData.ContainsKey(calculatedRoomId))
+        // [日志 1] 构造函数被调用
+        // 注意：这里打印太频繁可能会刷屏，所以我只在关键 SiteID (比如第1关或第13关) 打印
+        if (SiteId == 1 || SiteId == 13)
         {
-            RoomId = calculatedRoomId;
+            Console.WriteLine($"[RogueRoomDebug] 正在生成房间 SiteId: {SiteId}, MapId: {MapId}, World: {worldIndex}");
+        }
+
+        // --- 2. 核心逻辑 ---
+        bool isBossRoom = SiteId == 13 || SiteId == 111 || SiteId == 112;
+
+        if (isBossRoom)
+        {
+            // 【策略 A】BOSS 房
+            RoomId = GetBossRoomIdByWorldIndex(worldIndex);
+            Console.WriteLine($"[RogueRoomDebug] BOSS房锁定 -> SiteId: {SiteId}, 强制 RoomId: {RoomId}");
         }
         else
         {
-            // 如果计算出来的 ID 不存在 (比如起点的 ID 比较特殊)
-            // 尝试使用 fallback 逻辑或查找 RogueMapGenData
-            if (GameData.RogueMapGenData.TryGetValue(SiteId, out var genData))
+            // 【策略 B】普通房间
+            if (MapId == 1)
             {
-                RoomId = genData.RandomElement();
+                RoomId = 100 + (SiteId - 1);
+                if (!GameData.RogueRoomData.ContainsKey(RoomId)) RoomId = 100;
+            }
+            else if (MapId < 100)
+            {
+                RoomId = MapId * 100 + SiteId;
             }
             else
             {
-                // 实在找不到，回退到一个默认战斗房，防止崩服
-                RoomId = 100; 
+                int prefix = GetPrefixByWorldIndex(worldIndex);
+                int calculatedRoomId = prefix * 100 + SiteId;
+
+                if (SiteId == 1) // 调试日志
+                {
+                    Console.WriteLine($"[RogueRoomDebug] 普通房计算 -> World: {worldIndex}, Prefix: {prefix}, 尝试 RoomId: {calculatedRoomId}");
+                }
+
+                if (GameData.RogueRoomData.ContainsKey(calculatedRoomId))
+                {
+                    RoomId = calculatedRoomId;
+                }
+                else
+                {
+                    // 兜底逻辑
+                    int fallbackId = MapId * 100 + SiteId;
+                    if (GameData.RogueRoomData.ContainsKey(fallbackId))
+                    {
+                        RoomId = fallbackId;
+                        Console.WriteLine($"[RogueRoomDebug] RoomId {calculatedRoomId} 不存在! 回退到Map原生: {fallbackId}");
+                    }
+                    else
+                    {
+                        RoomId = GameData.RogueMapGenData.TryGetValue(SiteId, out var genData) 
+                                 ? genData.RandomElement() : SiteId;
+                        Console.WriteLine($"[RogueRoomDebug] 彻底找不到! 随机生成: {RoomId}");
+                    }
+                }
             }
         }
 
-        // --- 加载详细配置 ---
+        // --- 3. 加载数据 ---
         if (GameData.RogueRoomData.TryGetValue(RoomId, out var roomExcel))
         {
             Excel = roomExcel;
+            // [关键日志] 最终确认房间类型
+            if (SiteId == 13) 
+            {
+                Console.WriteLine($"[RogueRoomDebug] 最终加载房间 Excel -> RoomId: {RoomId}, Type: {Excel.RogueRoomType} (7=BOSS)");
+            }
         }
         else
         {
-            // 最终兜底
-            Excel = GameData.RogueRoomData.Values.First(x => x.RogueRoomType == 1);
+            Excel = GameData.RogueRoomData.Values.FirstOrDefault() ?? new RogueRoomExcel();
             RoomId = Excel.RogueRoomID;
+            Console.WriteLine($"[RogueRoomDebug] 严重错误! 房间数据加载失败, 使用默认 RoomId: {RoomId}");
         }
 
-        // --- 等级计算 ---
-        int progress = areaConfig.AreaProgress;
-        int difficulty = areaConfig.Difficulty;
-        this.MonsterLevel = progress * 10 + (difficulty - 1) * 10 + 5;
+      // --- 4. 【等级计算 - 终极完美版】 ---
+        // 现在 RogueAreaConfigExcel 里有 RecommendLevel 了，直接读！
+        int baseLevel = areaConfig.RecommendLevel;
+
+        // 兜底：万一 JSON 里某些难度没填等级，就用难度估算
+        if (baseLevel == 0) baseLevel = areaConfig.Difficulty * 10;
+
+        // 加上层数成长 (每2层+1级)，保证后期稍微难一点
+        this.MonsterLevel = baseLevel + (SiteId > 1 ? SiteId / 2 : 0);
+        
+        // 调试日志
+        if (SiteId == 1)
+            Console.WriteLine($"[RogueLevel] 区域 {areaConfig.RogueAreaID} -> 推荐等级: {baseLevel}, 初始实装: {this.MonsterLevel}");
     }
 
     public int RoomId { get; set; }
@@ -83,34 +121,45 @@ public class RogueRoomInstance
     public List<int> NextSiteIds { get; set; }
     public RogueRoomExcel Excel { get; set; }
 
-    /// <summary>
-    /// 【核心修改】根据 MapID 获取房间 ID 前缀
-    /// 这个映射表是根据 RogueRoom.json 分析出来的
-    /// </summary>
-    private int GetRoomPrefixByMapId(int mapId)
+   // GameServer/Game/Rogue/Scene/RogueRoomInstance.cs
+
+   // GameServer/Game/Rogue/Scene/RogueRoomInstance.cs
+
+    private int GetPrefixByWorldIndex(int index)
     {
-        return mapId switch
+        return index switch
         {
-            1 => 1,      // 世界 1 (简单) -> Room 100
-            2 => 2,      // 世界 2 (简单) -> Room 201
-            3 => 3,      // 世界 3 (雅利洛) -> Room 301
-            101 => 3,    // 世界 3 变体 -> Room 301 (复用)
+            // 世界 3: 用 2111 (大房间前缀)
+            3 => 2111, 
             
-            200 => 1111, // 世界 4 (史瓦罗) -> Room 111121
-            201 => 1111, // 世界 4 变体
+            // 世界 4: 也用 2111 (大房间前缀)
+            4 => 2111, 
             
-            300 => 1211, // 世界 5 (卡芙卡) -> Room 121121
-            301 => 1211,
+            // 其他保持原样
+            6 => 1221,
+            7 => 1321,
+            8 => 2001,
+            _ => 1111
+        };
+    }
+
+    private int GetBossRoomIdByWorldIndex(int index)
+    {
+        return index switch
+        {
+            // 世界 3 (杰帕德): 用 211713 (大房间)
+            3 => 122713, 
             
-            401 => 1311, // 世界 6 (可可利亚) -> Room 131121
+            // 世界 4 (史瓦罗): 也用 211713 (大房间)
+            // 没错，两个世界共用同一个房间地图！区别在于刷出来的怪。
+            4 => 131713,
+			5 => 132713,
             
-            501 => 2001, // 世界 7 (玄鹿) -> Room 200121
-            
-            601 => 2111, // 世界 8 (彦卿) -> Room 211121
-            
-            701 => 3001, // 世界 9 (萨姆) -> Room 300121
-            
-            _ => 1 // 默认
+            // 其他
+            6 => 122713,
+            7 => 132713,
+            8 => 200713,
+            _ => 111713
         };
     }
 
@@ -121,7 +170,7 @@ public class RogueRoomInstance
             RoomId = (uint)RoomId,
             SiteId = (uint)SiteId,
             CurStatus = Status,
-            IMIMGFAAGHM = (uint)Excel.RogueRoomType 
+            IMIMGFAAGHM = (uint)Excel.RogueRoomType
         };
     }
 }
