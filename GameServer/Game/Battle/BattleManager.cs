@@ -175,27 +175,7 @@ public class BattleManager(PlayerInstance player) : BasePlayerManager(player)
 
         return null;
     }
-	private async ValueTask OverworldKillHandler(EntityMonster monster)
-{
-    // 1. 处理大世界掉落并存入结算清单
-    var dropId = monster.MonsterData.ID * 10 + Player.Data.WorldLevel;
-    if (GameData.MonsterDropData.TryGetValue(dropId, out var dropData))
-    {
-        var items = dropData.CalculateDrop();
-        await Player.InventoryManager!.AddItems(items, false);
-        Player.BattleInstance?.MonsterDropItems.AddRange(items);
-    }
 
-    // 2. 解锁大世界宝箱
-    var chests = monster.Scene.Entities.Values.OfType<EntityProp>()
-        .Where(p => p.GroupId == monster.GroupId && p.Excel.PropType == PropTypeEnum.PROP_TREASURE_CHEST);
-
-    foreach (var chest in chests)
-    {
-        if (chest.State == PropStateEnum.ChestLocked)
-            await chest.SetState(PropStateEnum.ChestClosed);
-    }
-}
     public async ValueTask StartStage(int eventId)
     {
         if (Player.BattleInstance != null)

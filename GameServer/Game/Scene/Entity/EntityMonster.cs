@@ -166,7 +166,7 @@ public class EntityMonster(
     {
         await Scene.Player.BattleInstance.TriggerMonsterKill(this);
     }
-
+	
     // 任务计数和清理
     await Scene.Player.MissionManager!.HandleFinishType(MissionFinishTypeEnum.KillMonster, this);
     await Scene.RemoveEntity(this);

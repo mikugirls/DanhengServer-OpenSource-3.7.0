@@ -160,7 +160,7 @@ public class RogueInstance : BaseRogueInstance
     {
         // 教学关 (7关)
         if (areaId == 100) return 1;
-        if (areaId == 110) return 2;
+        if (areaId == 110) return 3;
         if (areaId == 120) return 3;
 
         // 正式世界 (World 3 - 9)

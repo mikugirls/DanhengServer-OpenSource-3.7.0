@@ -13,139 +13,135 @@ namespace EggLink.DanhengServer.GameServer.Game.Drop;
 public class DropManager(PlayerInstance player) : BasePlayerManager(player)
 {
     /// <summary>
-    /// 战斗奖励统一结算入口（异步处理，彻底杜绝死锁）
+    /// 战斗奖励统一结算入口
     /// </summary>
-public async ValueTask ProcessBattleRewards(BattleInstance battle, PVEBattleResultCsReq req)
-{
-    // --- 【全链路追踪日志：开始】 ---
-    Console.WriteLine($"\n[Drop-Debug] >>>>>>>>>> 战斗结算链路启动 <<<<<<<<<<");
-    Console.WriteLine($"[Drop-Debug] 战斗ID: {battle.BattleId} | 状态: {req.EndStatus}");
-    Console.WriteLine($"[Drop-Debug] 副本关联ID (MappingInfoId): {battle.MappingInfoId}");
-    Console.WriteLine($"[Drop-Debug] 场景模式: {Player.SceneInstance?.GameModeType} | 均衡等级: {Player.Data.WorldLevel}");
-    
-    if (req.EndStatus != BattleEndStatus.BattleEndWin) 
+    public async ValueTask ProcessBattleRewards(BattleInstance battle, PVEBattleResultCsReq req)
     {
-        Console.WriteLine($"[Drop-Debug] 战斗未获胜，跳过奖励发放。");
-        return;
-    }
-
-    // 1. 处理每一个怪物的死亡信号
-    foreach (var monster in battle.EntityMonsters) 
-    {
-        await monster.Kill(false); 
-
-        // 【核心修复】：如果是副本(MappingID > 0)，绝对禁止触发大世界怪物掉落
-        // 从而彻底杜绝 MonsterDrop.json 里错误配置的“相位灵火”
-        if (battle.MappingInfoId > 0) 
+        Console.WriteLine($"\n[Drop-Debug] >>>>>>>>>> 战斗结算链路启动 <<<<<<<<<<");
+        
+        if (req.EndStatus != BattleEndStatus.BattleEndWin) 
         {
-            Console.WriteLine($"[Drop-Debug] 检测到副本模式: 拦截怪物 {monster.MonsterData.ID} 的大世界掉落，避免ID污染。");
-            continue; 
+            Console.WriteLine($"[Drop-Debug] 战斗未获胜，跳过奖励发放。");
+            return;
         }
 
-        // 仅在真正的“非副本”大世界模式下运行
-        if (Player.SceneInstance?.GameModeType == GameModeTypeEnum.Unknown || Player.SceneInstance?.GameModeType == GameModeTypeEnum.Maze)
+        // 防止同一组怪重复触发
+        var processedGroups = new HashSet<int>();
+
+        foreach (var monster in battle.EntityMonsters) 
         {
-            var dropId = monster.MonsterData.ID * 10 + Player.Data.WorldLevel;
-            if (GameData.MonsterDropData.TryGetValue(dropId, out var dropData))
+            await monster.Kill(false); 
+
+            // 1. 拦截副本模式 (既不给奖励，也不解锁)
+            if (battle.MappingInfoId > 0) continue; 
+
+            // 2. 大世界掉落 (仅 Unknown/Maze)
+            if (Player.SceneInstance?.GameModeType == GameModeTypeEnum.Unknown || Player.SceneInstance?.GameModeType == GameModeTypeEnum.Maze)
             {
-                var items = dropData.CalculateDrop();
-                await Player.InventoryManager!.AddItems(items, false);
-                battle.MonsterDropItems.AddRange(items);
-                Console.WriteLine($"[Drop-Debug] 触发大世界掉落: 怪物 {monster.MonsterData.ID} 产出 {items.Count} 堆物品。");
+                var dropId = monster.MonsterData.ID * 10 + Player.Data.WorldLevel;
+                if (GameData.MonsterDropData.TryGetValue(dropId, out var dropData))
+                {
+                    var items = dropData.CalculateDrop();
+                    await Player.InventoryManager!.AddItems(items, false);
+                    battle.MonsterDropItems.AddRange(items);
+                }
+            }
+
+            // 3. 同组宝箱解封 (仅宝箱，不存库)
+            if (processedGroups.Add(monster.GroupId))
+            {
+                await HandleGroupPropUnlock(monster);
+            }
+        }
+
+        // --- 分流结算 ---
+        if (battle.MappingInfoId > 0) await HandleRaidSettlement(battle);
+
+        if (Player.SceneInstance?.GameModeType is GameModeTypeEnum.RogueExplore or GameModeTypeEnum.ChessRogue or GameModeTypeEnum.TournRogue or GameModeTypeEnum.MagicRogue)
+        {
+            await HandleRogueSettlement(battle);
+        }
+
+        if (battle.CollegeConfigExcel != null) await HandleCollegeSettlement(battle);
+
+        Console.WriteLine($"[Drop-Debug] <<<<<<<<<< 战斗结算链路结束 >>>>>>>>>>\n");
+    }
+
+    /// <summary>
+    /// 【极简版】只解除同组宝箱的封印，不存库，不碰门
+    /// </summary>
+    private async ValueTask HandleGroupPropUnlock(EntityMonster monster)
+    {
+        var scene = Player.SceneInstance;
+        if (scene == null) return;
+
+        // 黑名单：模拟宇宙跳过
+        if (scene.GameModeType == GameModeTypeEnum.RogueExplore ||
+            scene.GameModeType == GameModeTypeEnum.RogueChallenge ||
+            scene.GameModeType == GameModeTypeEnum.RogueAeonRoom ||
+            scene.GameModeType == GameModeTypeEnum.ChessRogue ||
+            scene.GameModeType == GameModeTypeEnum.TournRogue ||
+            scene.GameModeType == GameModeTypeEnum.MagicRogue)
+        {
+            return;
+        }
+
+        var relatedProps = scene.Entities.Values
+            .OfType<EntityProp>()
+            .Where(p => p.GroupId == monster.GroupId)
+            .ToList();
+
+        if (relatedProps.Count == 0) return;
+
+        foreach (var prop in relatedProps)
+        {
+            // 只处理：被封印的宝箱 (Locked -> Closed)
+            if (prop.State == PropStateEnum.ChestLocked)
+            {
+                Console.WriteLine($"[DropManager] -> 解除宝箱封印(临时): 物件ID {prop.EntityId}");
+                await prop.SetState(PropStateEnum.ChestClosed);
+                // 不执行 Save
             }
         }
     }
 
-    // --- 【分流结算逻辑】 ---
-
-    // 2. 处理副本结算 (凝滞虚影、花藏等)
-    if (battle.MappingInfoId > 0)
-    {
-        Console.WriteLine($"[Drop-Debug] >>> 执行副本结算路径: MappingID = {battle.MappingInfoId}");
-        
-        // 记录调用前的时间，排查异步阻塞
-        await HandleRaidSettlement(battle);
-        
-        if (battle.RaidRewardItems.Count > 0)
-        {
-            foreach(var res in battle.RaidRewardItems)
-                Console.WriteLine($"[Drop-Debug] 成功产出副本核心奖励: 物品ID {res.ItemId} 数量 {res.Count}");
-        }
-        else
-        {
-            Console.WriteLine($"[Drop-Debug] !!! 警告: 副本结算完成，但未产出任何物品。请检查 MappingInfoExcel.cs 里的 Loaded 逻辑。");
-        }
-    }
-
-    // 3. 处理模拟宇宙结算
-    if (Player.SceneInstance?.GameModeType is GameModeTypeEnum.RogueExplore or GameModeTypeEnum.ChessRogue or GameModeTypeEnum.TournRogue or GameModeTypeEnum.MagicRogue)
-    {
-        Console.WriteLine($"[Drop-Debug] >>> 执行模拟宇宙(Rogue)结算路径。");
-        await HandleRogueSettlement(battle);
-    }
-
-    // 4. 处理战斗考核结算
-    if (battle.CollegeConfigExcel != null)
-    {
-        Console.WriteLine($"[Drop-Debug] >>> 执行战斗考核结算路径。");
-        await HandleCollegeSettlement(battle);
-    }
-
-    Console.WriteLine($"[Drop-Debug] <<<<<<<<<< 战斗结算链路结束 >>>>>>>>>>\n");
-}
     /// <summary>
-    /// 处理普通副本 (Raid) 掉落逻辑
+    /// 处理大世界宝箱交互 (只改状态，不存库)
     /// </summary>
+    public async ValueTask HandleChestInteractDrop(EntityProp prop)
+    {
+        if (prop.Excel.MappingInfoID > 0) return;
+        if (prop.State == PropStateEnum.ChestUsed) return;
+
+        // 给物品
+        var items = DropService.CalculateDropsFromProp(prop.PropInfo.ChestID);
+        await Player.InventoryManager!.AddItems(items);
+        
+        // 通知客户端播动画
+        await Player.SendPacket(new PacketOpenChestScNotify(prop.PropInfo.ChestID));
+
+        // 只改运行时状态：盖子打开
+        await prop.SetState(PropStateEnum.ChestUsed);
+        
+        // 删除了所有 Player.SceneData.OpenedChestIdList.Add(...) 代码
+    }
+
+    // --- 以下保持原样 ---
+
     private async ValueTask HandleRaidSettlement(BattleInstance battle)
     {
         if (battle.MappingInfoId <= 0) return;
-
-        // 调用原本 InventoryManager 里的副本掉落算法
-        // 这里使用 await 确保数据库写入完成后再继续，且不会阻塞主线程
         var items = await Player.InventoryManager!.HandleMappingInfo(battle.MappingInfoId, battle.WorldLevel);
-        
-        // 将产出的物品存入战斗实例的结算清单
         battle.RaidRewardItems.AddRange(items);
     }
 
-    /// <summary>
-    /// 处理模拟宇宙 (Rogue) 结算逻辑（修复 1004 BOSS 卡死）
-    /// </summary>
     private async ValueTask HandleRogueSettlement(BattleInstance battle)
     {
         var rogue = Player.RogueManager?.GetRogueInstance() as RogueInstance;
         if (rogue == null) return;
-
-        // 1. 处理肉鸽专属奖励（碎片、积分、祝福抽选）
         await rogue.HandleBattleWinRewards(battle);
-
-        // 2. 模拟宇宙 BOSS 沉浸奖励 (如果有关底 Mapping 奖励)
-        if (battle.MappingInfoId > 0)
-        {
-            Console.WriteLine($"[Rogue] 关底 BOSS 结算，跳过普通奖励。");
-        }
     }
 
-    /// <summary>
-    /// 处理大世界宝箱交互掉落
-    /// </summary>
-    public async ValueTask HandleChestInteractDrop(EntityProp prop)
-	{
-		// 增加一层防护：如果是副本入口，不作为宝箱处理
-		if (prop.Excel.MappingInfoID > 0) return;
-        // 调用 DropService 算出宝箱内容
-        var items = DropService.CalculateDropsFromProp(prop.PropInfo.ChestID);
-        
-        // 统一入库
-        await Player.InventoryManager!.AddItems(items);
-        
-        // 发送开箱协议通知客户端
-        await Player.SendPacket(new PacketOpenChestScNotify(prop.PropInfo.ChestID));
-    }
-
-    /// <summary>
-    /// 处理战斗考核结算
-    /// </summary>
     private async ValueTask HandleCollegeSettlement(BattleInstance battle)
     {
         var excel = battle.CollegeConfigExcel!;
@@ -153,69 +149,43 @@ public async ValueTask ProcessBattleRewards(BattleInstance battle, PVEBattleResu
         {
             Player.BattleCollegeData.FinishedCollegeIdList.Add(excel.ID);
             await Player.SendPacket(new PacketBattleCollegeDataChangeScNotify(Player));
-            
             var items = await Player.InventoryManager!.HandleReward(excel.RewardID);
             battle.RaidRewardItems.AddRange(items);
         }
     }
-	// DropManager.cs
 
-/// <summary>
-/// 【测试模式】模拟宇宙沉浸奖励发放 (根据 AreaID 和 难度 筛选)
-/// </summary>
-public async ValueTask GrantRogueImmersiveReward(RogueInstance rogue)
-{
-    if (rogue == null || rogue.AreaExcel.ChestDisplayItemList == null)
+    public async ValueTask GrantRogueImmersiveReward(RogueInstance rogue)
     {
-        Console.WriteLine("[DropManager] 错误：没有找到掉落表，发放低保。");
-        await Player.InventoryManager!.AddItem(2, 2000);
-        return;
-    }
-
-    // 获取当前难度
-    int currentDifficulty = rogue.AreaExcel.Difficulty;
-    // 获取当前区域ID (用于日志)
-    int areaId = rogue.AreaExcel.RogueAreaID;
-
-    Console.WriteLine($"[DropManager] 开始计算奖励 -> AreaID: {areaId}, 难度: {currentDifficulty}");
-
-    int dropCount = 0;
-
-    foreach (var item in rogue.AreaExcel.ChestDisplayItemList)
-    {
-        // 1. 基础物品 (如信用点、经验材料)，ItemID 通常比较小 (< 30000)，直接发
-        if (item.ItemID < 30000)
+        if (rogue == null || rogue.AreaExcel.ChestDisplayItemList == null)
         {
-            int count = item.ItemNum > 0 ? item.ItemNum : 1;
-            await Player.InventoryManager!.AddItem(item.ItemID, count);
-            continue;
+            await Player.InventoryManager!.AddItem(2, 2000);
+            return;
         }
 
-        // 2. 核心掉落组 (83xxx 这种)
-        // 规则：ID 的最后一位数字 == 当前难度
-        // 例如：难度 1 只发 83011，不发 83012
-        if (item.ItemID % 10 == currentDifficulty)
-        {
-            // 数量通常是 0，这里默认给 1 个
-            // 如果你想双倍掉落，可以在这里改 count
-            int count = item.ItemNum > 0 ? item.ItemNum : 1;
+        int currentDifficulty = rogue.AreaExcel.Difficulty;
+        int dropCount = 0;
 
-            await Player.InventoryManager!.AddItem(item.ItemID, count);
-            
-            Console.WriteLine($"[DropManager] 命中掉落组 -> ID: {item.ItemID} (匹配难度 {currentDifficulty})");
-            dropCount++;
+        foreach (var item in rogue.AreaExcel.ChestDisplayItemList)
+        {
+            if (item.ItemID < 30000)
+            {
+                int count = item.ItemNum > 0 ? item.ItemNum : 1;
+                await Player.InventoryManager!.AddItem(item.ItemID, count);
+                continue;
+            }
+
+            if (item.ItemID % 10 == currentDifficulty)
+            {
+                int count = item.ItemNum > 0 ? item.ItemNum : 1;
+                await Player.InventoryManager!.AddItem(item.ItemID, count);
+                dropCount++;
+            }
+        }
+
+        if (dropCount == 0)
+        {
+            var backupItem = rogue.AreaExcel.ChestDisplayItemList.FirstOrDefault(x => x.ItemID > 30000);
+            if (backupItem != null) await Player.InventoryManager!.AddItem(backupItem.ItemID, 1);
         }
     }
-
-    if (dropCount == 0)
-    {
-        // 如果筛选完发现什么都没发 (可能是 ID 规律不对)，兜底发一个列表里的第一个高级物品
-        Console.WriteLine("[DropManager] 警告：没有匹配到当前难度的掉落，尝试发放列表第一个候选...");
-        var backupItem = rogue.AreaExcel.ChestDisplayItemList.FirstOrDefault(x => x.ItemID > 30000);
-        if (backupItem != null)
-        {
-             await Player.InventoryManager!.AddItem(backupItem.ItemID, 1);
-        }
-    }
-}
 }
