@@ -119,9 +119,13 @@ public class RogueManager(PlayerInstance player) : BasePlayerManager(player)
     // 【新增】通关结算：发奖励 + 解锁下一关 + 保存数据库
     // =========================================================================
    // --- 【修改 FinishRogue 方法】 ---
-public async ValueTask FinishRogue(int currentAreaId, bool isWin)
+	// =========================================================================
+// 【修改后】通关发奖：返回物品列表供结算大屏展示
+// =========================================================================
+public async ValueTask<List<ItemData>> FinishRogue(int currentAreaId, bool isWin)
 {
-    if (!isWin) return;
+    List<ItemData> totalRewards = new();
+    if (!isWin) return totalRewards;
 
     Console.WriteLine($"[RogueManager] 战斗胜利，准备发放 AreaId: {currentAreaId} 的首通奖励...");
 
@@ -133,13 +137,21 @@ public async ValueTask FinishRogue(int currentAreaId, bool isWin)
         if (firstRewardId > 0)
         {
             // 2. 调用 InventoryManager 的 HandleReward 发放物品
-            // sync: true 同步总额，notify: false 避免右侧弹出重复黑框
-            // 因为这些奖励会自动出现在 PVEBattleResultScRsp (战斗胜利大屏) 上
-            await Player.InventoryManager!.HandleReward(firstRewardId, notify: false, sync: true);
-            Console.WriteLine($"[RogueManager] 首通奖励 (ID: {firstRewardId}) 已处理。");
+            // 注意：这里我们接收它的返回值 (List<ItemData>)
+            // sync: true 会同步全量数据刷新顶栏，notify: false 避免右侧弹出重复黑框
+            var rewards = await Player.InventoryManager!.HandleReward(firstRewardId, notify: false, sync: true);
+            
+            if (rewards != null)
+            {
+                totalRewards.AddRange(rewards);
+                Console.WriteLine($"[RogueManager] 首通奖励 (ID: {firstRewardId}) 已注入列表，数量: {rewards.Count}");
+            }
         }
     }
-} 	
+    
+    // 返回奖励列表，这样 RogueInstance 才能把它们塞进战斗结算协议
+    return totalRewards; 
+}
 	// --- 【新增 UpdateRogueProgress 方法】 ---
 public async ValueTask UpdateRogueProgress(int currentAreaId)
 {
