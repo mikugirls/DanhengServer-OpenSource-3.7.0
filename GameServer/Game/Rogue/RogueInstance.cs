@@ -143,23 +143,39 @@ public class RogueInstance : BaseRogueInstance
     #endregion
 
     #region Methods
-    public async ValueTask HandleBattleWinRewards(BattleInstance battle)
+ 	public async ValueTask HandleBattleWinRewards(BattleInstance battle)
 {
+    // 1. 判定是否为最终 BOSS (Site 13 或 房间类型 7)
     bool isFinalBoss = CurRoom?.Excel.RogueRoomType == 7 || CurRoom?.SiteId == 13;
     
     if (isFinalBoss)
     {
-        // 打完 BOSS 瞬间：给奖励，不弹 Buff
-        await Player.RogueManager!.FinishRogue(AreaExcel.RogueAreaID, true);
+        // --- 核心修改：战斗大屏领奖逻辑 ---
+        Console.WriteLine($"[Rogue-Drop] 检测到最终BOSS胜利，正在将首通奖励注入结算大屏...");
+
+        // A. 调用 RogueManager 发放首通奖励
+        // 这一步会通过 InventoryManager.HandleReward 将物品存入背包
+        // 并返回一个“增量物品列表”
+        var rewards = await Player.RogueManager!.FinishRogue(AreaExcel.RogueAreaID, true);
         
+        // B. 【关键】将奖励列表注入到当前战斗实例的 RaidRewardItems 中
+        // PVEBattleResultScRsp 协议包会自动读取这个列表并展示在胜利大屏正中央
+        if (rewards != null && rewards.Count > 0)
+        {
+            battle.RaidRewardItems.AddRange(rewards);
+        }
+
+        // C. 标记通关状态，同步给客户端
         IsWin = true;
         Status = RogueStatus.Finish;
         await Player.SendPacket(new PacketSyncRogueStatusScNotify(Status));
-        // 不执行 GainMoney 和 RollBuff
+
+        // D. 拦截逻辑：不执行 GainMoney 和 RollBuff，防止弹出 Buff 选择框
+        Console.WriteLine("[Rogue-Drop] 最终关卡：奖励已注入，跳过Buff选择。");
     }
     else
     {
-        // 普通战斗：给钱，弹 Buff
+        // 2. 普通房间逻辑 (保持不变)
         int waveCount = Math.Max(1, battle.Stages.Count);
         var money = Random.Shared.Next(20, 60) * waveCount;
         await GainMoney(money);
