@@ -82,6 +82,8 @@ public class BattleInstance(PlayerInstance player, LineupInfo lineup, List<Stage
 	// 新增：RAID / 副本结算奖励清单（由 DropManager 填充）
 	// BattleInstance.cs
 	public List<ItemData> RogueFirstRewardItems { get; set; } = new();
+	// 1. 保留这个！DropManager 需要它来存放常规副本奖励（遗器、材料等）
+	public List<ItemData> RaidRewardItems { get; set; } = new();	
     public List<StageConfigExcel> Stages { get; set; } = stages;
     public LineupInfo Lineup { get; set; } = lineup;
     public List<EntityMonster> EntityMonsters { get; set; } = [];
