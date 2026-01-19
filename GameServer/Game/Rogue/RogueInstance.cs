@@ -245,17 +245,23 @@ public class RogueInstance : BaseRogueInstance
     }
 
     public async ValueTask QuitRogue()
+{
+    Status = RogueStatus.Finish;
+    await Player.SendPacket(new PacketSyncRogueStatusScNotify(Status));
+    
+    // 弹出周积分结算大屏（内部会 AddRogueScore）
+    await Player.SendPacket(new PacketSyncRogueFinishScNotify(ToFinishInfo()));
+
+    // 【核心修改】点击退出时，不再发奖，只处理关卡解锁进度
+    if (IsWin)
     {
-        Status = RogueStatus.Finish;
-        await Player.SendPacket(new PacketSyncRogueStatusScNotify(Status));
-        await Player.SendPacket(new PacketSyncRogueFinishScNotify(ToFinishInfo()));
-		// 2. 【核心新增】如果赢了，调用 Manager 发奖励并保存进度
-        // 这一步会触发：发100星琼 + 解锁下一关 + 数据库保存
-        if (IsWin)
-        {
-            await Player.RogueManager!.FinishRogue(AreaExcel.RogueAreaID, true);
-        }
+        // 我们给 FinishRogue 增加一个参数，或者直接在这里处理进度
+        // 建议：在 RogueManager 里增加一个只处理进度的方法，或者让 FinishRogue 不再发物品
+        await Player.RogueManager!.UpdateRogueProgress(AreaExcel.RogueAreaID);
     }
+    
+    await LeaveRogue();
+}
     #endregion
 
     #region Handlers
