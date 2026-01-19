@@ -155,7 +155,7 @@ public class RogueInstance : BaseRogueInstance
         // 2. 注入战斗实例，确保在大屏显示
         if (rewards != null && rewards.Count > 0)
         {
-            battle.RaidRewardItems.AddRange(rewards);
+            battle.RogueFirstRewardItems.AddRange(rewards);
         }
         
         // 3. 标记状态
