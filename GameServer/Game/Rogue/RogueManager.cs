@@ -123,35 +123,28 @@ public class RogueManager(PlayerInstance player) : BasePlayerManager(player)
 // 【修改后】通关发奖：返回物品列表供结算大屏展示
 // =========================================================================
 public async ValueTask<List<ItemData>> FinishRogue(int currentAreaId, bool isWin)
-{
-    List<ItemData> totalRewards = new();
-    if (!isWin) return totalRewards;
-
-    Console.WriteLine($"[RogueManager] 战斗胜利，准备发放 AreaId: {currentAreaId} 的首通奖励...");
-
-    // 1. 获取当前关卡的配置
-    if (GameData.RogueAreaConfigData.TryGetValue(currentAreaId, out var areaConfig))
     {
-        int firstRewardId = areaConfig.FirstReward;
+        List<ItemData> totalRewards = new();
+        if (!isWin) return totalRewards;
 
-        if (firstRewardId > 0)
+        
+
+        if (GameData.RogueAreaConfigData.TryGetValue(currentAreaId, out var areaConfig))
         {
-            // 2. 调用 InventoryManager 的 HandleReward 发放物品
-            // 注意：这里我们接收它的返回值 (List<ItemData>)
-            // sync: true 会同步全量数据刷新顶栏，notify: false 避免右侧弹出重复黑框
-            var rewards = await Player.InventoryManager!.HandleReward(firstRewardId, notify: false, sync: true);
-            
-            if (rewards != null)
+            int firstRewardId = areaConfig.FirstReward;
+            if (firstRewardId > 0)
             {
-                totalRewards.AddRange(rewards);
-                Console.WriteLine($"[RogueManager] 首通奖励 (ID: {firstRewardId}) 已注入列表，数量: {rewards.Count}");
+                // 【修改这里】notify: false (关掉右侧小黑框)
+                // sync: true (保留左上角数字刷新)
+                var rewards = await Player.InventoryManager!.HandleReward(firstRewardId, notify: false, sync: true);
+                
+                if (rewards != null) totalRewards.AddRange(rewards);
             }
         }
+        
+        await System.Threading.Tasks.Task.CompletedTask;
+        return totalRewards; 
     }
-    
-    // 返回奖励列表，这样 RogueInstance 才能把它们塞进战斗结算协议
-    return totalRewards; 
-}
 	// --- 【新增 UpdateRogueProgress 方法】 ---
 public async ValueTask UpdateRogueProgress(int currentAreaId)
 {
@@ -168,6 +161,7 @@ public async ValueTask UpdateRogueProgress(int currentAreaId)
     // 2. 触发数据库保存
     // 这样保证了奖励可以无限刷（因为不存奖励领取状态），但进度解锁是永久保存的
     DatabaseHelper.ToSaveUidList.SafeAdd(Player.Uid);
+	await System.Threading.Tasks.Task.CompletedTask;
 }
    private static readonly Dictionary<int, int[]> WorldToRelicSets = new()
     {

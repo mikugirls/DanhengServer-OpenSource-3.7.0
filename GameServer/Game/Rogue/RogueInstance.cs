@@ -12,6 +12,7 @@ using EggLink.DanhengServer.Proto;
 using EggLink.DanhengServer.Util;
 using EggLink.DanhengServer.GameServer.Game.Scene.Entity;
 using EggLink.DanhengServer.Enums.Scene;
+using EggLink.DanhengServer.Database.Inventory;
 
 namespace EggLink.DanhengServer.GameServer.Game.Rogue;
 
@@ -29,22 +30,18 @@ public class RogueInstance : BaseRogueInstance
         CurLineup = player.LineupManager!.GetCurLineup()!;
         EventManager = new RogueEventManager(player, this);
 
-        // 1. 获取 MapId (统一长图骨架)
         int mapId = GetMapIdFromAreaId(areaExcel.RogueAreaID);
         
-        // 2. 检查 MapId
         if (!GameData.RogueMapData.ContainsKey(mapId))
         {
             Console.WriteLine($"[Rogue Error] 找不到 MapId: {mapId}，紧急回退到 1");
             mapId = 1; 
         }
 
-        // 3. 加载房间
         if (GameData.RogueMapData.TryGetValue(mapId, out var mapRooms))
         {
             foreach (var item in mapRooms.Values)
             {
-                // 创建房间实例 (所有逻辑都在 RogueRoomInstance 内部处理了)
                 var roomInstance = new RogueRoomInstance(item, areaExcel);
                 roomInstance.MapId = mapId; 
 
@@ -57,7 +54,6 @@ public class RogueInstance : BaseRogueInstance
             Console.WriteLine($"[Rogue Critical] 无法加载房间！MapId: {mapId}");
         }
 
-        // 初始化 Bonus
         var action = new RogueActionInstance { QueuePosition = CurActionQueuePosition };
         action.SetBonus();
         RogueActions.Add(CurActionQueuePosition, action);
@@ -143,54 +139,57 @@ public class RogueInstance : BaseRogueInstance
     #endregion
 
     #region Methods
- 	public async ValueTask HandleBattleWinRewards(BattleInstance battle)
-{
-    bool isFinalBoss = CurRoom?.Excel.RogueRoomType == 7 || CurRoom?.SiteId == 13;
     
-    if (isFinalBoss)
+    // =========================================================================
+    // 【唯一发奖入口】 HandleBattleWinRewards
+    // 负责：BOSS战(发奖+弹窗) 和 普通战(发钱+RollBuff)
+    // =========================================================================
+    public async ValueTask HandleBattleWinRewards(BattleInstance battle)
     {
-        // 1. 获取奖励列表
-        var rewards = await Player.RogueManager!.FinishRogue(AreaExcel.RogueAreaID, true);
+        // 关键判断：最后一关 (NextSiteIds为空) 或者 类型7/Site13
+        bool isFinalBoss = CurRoom!.NextSiteIds.Count == 0 || CurRoom.Excel.RogueRoomType == 7 || CurRoom.SiteId == 13;
         
-        // 2. 注入战斗实例，确保在大屏显示
-        if (rewards != null && rewards.Count > 0)
+        if (isFinalBoss)
         {
-            battle.RogueFirstRewardItems.AddRange(rewards);
+            Console.WriteLine("[Rogue] 结算：BOSS 战胜利，调用 Manager.FinishRogue...");
+            
+            // 1. 调用 Manager 发奖 (notify=true 在 Manager 里设置了)
+            var rewards = await Player.RogueManager!.FinishRogue(AreaExcel.RogueAreaID, true);
+            
+            // 2. 将获得的列表注入到战斗实例 (用于显示)
+            if (rewards != null && rewards.Count > 0)
+            {
+                // Manager.FinishRogue 返回的是 List，所以这里用 AddRange 是对的！
+                battle.RogueFirstRewardItems.AddRange(rewards);
+            }
+            
+            // 3. 标记胜利
+            IsWin = true;
+            Status = RogueStatus.Finish;
+            
+            // 4. 发送大窗协议
+            await Player.SendPacket(new PacketSyncRogueFinishScNotify(ToFinishInfo()));
+            //await Player.SendPacket(new PacketSyncRogueStatusScNotify(Status));
+            
+            Console.WriteLine("[Rogue] 结算完成。");
         }
-        
-        // 3. 标记状态
-        IsWin = true;
-        Status = RogueStatus.Finish;
-        await Player.SendPacket(new PacketSyncRogueStatusScNotify(Status));
-        // 不再执行 RollBuff，界面保持干净
+        else
+        {
+            // 普通怪逻辑
+            int waveCount = Math.Max(1, battle.Stages.Count);
+            var money = Random.Shared.Next(20, 60) * waveCount;
+            await GainMoney(money);
+            await RollBuff(1); 
+        }
     }
-    else
-    {
-        // 普通怪逻辑
-        int waveCount = Math.Max(1, battle.Stages.Count);
-        var money = Random.Shared.Next(20, 60) * waveCount;
-        await GainMoney(money);
-        await RollBuff(1); 
-    }
-}
-   
-
-    // --- 核心修改：统一使用长图 Map ID (200) ---
+    
     private int GetMapIdFromAreaId(int areaId)
     {
-        // 教学关 (7关)
         if (areaId == 100) return 1;
         if (areaId == 110) return 3;
         if (areaId == 120) return 3;
-
-        // 正式世界 (World 3 - 9)
-        // 全部统一返回 200 (因为 Map 200 确定是 13 关的长图)
-        // 具体的怪物和场景风格，由 RogueRoomInstance 内部的 worldIndex 决定
         if (areaId >= 130 && areaId < 200) return 200; 
-
-        // DLC
         if (areaId >= 10100) return 10001; 
-
         return 1;
     }
 
@@ -239,30 +238,22 @@ public class RogueInstance : BaseRogueInstance
         Player.LineupManager!.SetExtraLineup(ExtraLineupType.LineupNone, []);
     }
 
-  public async ValueTask QuitRogue()
-{
-    // 1. 获取本次得分
-    AreaExcel.ScoreMap.TryGetValue(CurReachedRoom, out var score);
-
-    // 2. 正式结算周积分 (调用 Manager 的方法)
-    Player.RogueManager!.AddRogueScore(score);
-
-    // 3. 设置状态并同步
-    Status = RogueStatus.Finish;
-    await Player.SendPacket(new PacketSyncRogueStatusScNotify(Status));
-    
-    // 4. 发送结算大屏协议
-    await Player.SendPacket(new PacketSyncRogueFinishScNotify(ToFinishInfo()));
-
-    // 5. 更新解锁进度并保存数据库 (这是你刚才提到的 Manager 里的新方法)
-    if (IsWin)
+    public async ValueTask QuitRogue()
     {
-        await Player.RogueManager!.UpdateRogueProgress(AreaExcel.RogueAreaID);
-    }
+        AreaExcel.ScoreMap.TryGetValue(CurReachedRoom, out var score);
+        Player.RogueManager!.AddRogueScore(score);
 
-    // 6. 离开场景
-    await LeaveRogue();
-}
+        Status = RogueStatus.Finish;
+        await Player.SendPacket(new PacketSyncRogueStatusScNotify(Status));
+        await Player.SendPacket(new PacketSyncRogueFinishScNotify(ToFinishInfo()));
+        
+        if (IsWin) 
+        {
+            await Player.RogueManager!.UpdateRogueProgress(AreaExcel.RogueAreaID);
+        }
+
+        await LeaveRogue();
+    }
     #endregion
 
     #region Handlers
@@ -281,57 +272,34 @@ public class RogueInstance : BaseRogueInstance
         }
     }
 
- public override void OnBattleStart(BattleInstance battle)
+    public override void OnBattleStart(BattleInstance battle)
     {
         base.OnBattleStart(battle);
-        
-        Console.WriteLine($"[RogueDebug] OnBattleStart 被调用! CurRoom 是否为空: {(CurRoom == null ? "是" : "否")}");
         if (CurRoom == null) return;
 
-        // 1. 基础设置
         battle.OnMonsterKill += OnRogueMonsterKill;
         battle.MappingInfoId = 0;
         battle.StaminaCost = 0;
 
-        // 2. 准备基础数据 (只在这里定义一次！)
         int worldIndex = (AreaExcel.RogueAreaID / 10) % 10;
         int difficulty = AreaExcel.Difficulty; 
         if (difficulty == 0) difficulty = 1;
 
-        // 3. 【等级核心修复】
-        // 直接读取 Excel 的 RecommendLevel
         int baseLevel = AreaExcel.RecommendLevel;
-        
-        // 兜底：如果表里是 0，就用备用公式
         if (baseLevel == 0) 
         {
-             // 备用公式：世界3=35, 往后每世界+5; 难度每级+10
              baseLevel = 35 + ((worldIndex > 3 ? worldIndex - 3 : 0) * 5) + ((difficulty - 1) * 10);
         }
-
-        // 加上层数微量成长 (每2层+1级)
         int targetLevel = baseLevel + (CurReachedRoom / 2);
-        
-        // 赋值
         battle.CustomLevel = CurRoom.MonsterLevel > 0 ? CurRoom.MonsterLevel : targetLevel;
         
-        Console.WriteLine($"[RogueLevel] 战斗等级修正 -> 推荐:{baseLevel} 最终:{battle.CustomLevel} (世界:{worldIndex})");
-
-        // 4. 【BOSS 注入逻辑】
         bool isBossStage = CurRoom.Excel.RogueRoomType == 7 || CurRoom.SiteId == 13;
 
         if (isBossStage) 
         {
-            Console.WriteLine($"[RogueDebug] 判定为BOSS战 (SiteId: {CurRoom.SiteId}, Type: {CurRoom.Excel.RogueRoomType})");
-            
-            // 默认公式
             int targetStageId = 80300000 + (worldIndex * 10) + difficulty;
-
-            // [双重保险] 明确指定 ID，防止算错
-            if (worldIndex == 3) targetStageId = 80300031; // 杰帕德
-            if (worldIndex == 4) targetStageId = 80300041; // 史瓦罗
-
-            Console.WriteLine($"[RogueDebug] BOSS战注入 -> World: {worldIndex}, TargetStage: {targetStageId}");
+            if (worldIndex == 3) targetStageId = 80300031; 
+            if (worldIndex == 4) targetStageId = 80300041; 
 
             if (targetStageId > 0 && GameData.StageConfigData.TryGetValue(targetStageId, out var stageConfig))
             {
@@ -340,48 +308,37 @@ public class RogueInstance : BaseRogueInstance
                 {
                     battle.Stages.Clear(); 
                     battle.Stages.Add(stageConfig); 
-                    Console.WriteLine($"[RogueDebug] 注入成功!");
                 }
             }
-            else
-            {
-                Console.WriteLine($"[RogueDebug] 错误: 数据库里没有 {targetStageId} 这个 Stage!");
-            }
         }
-        else
-        {
-            Console.WriteLine($"[RogueDebug] 普通战斗: SiteId={CurRoom.SiteId}, Type={CurRoom.Excel.RogueRoomType}");
-        }
-        
-        Console.WriteLine($"[Rogue] 战斗开始. Level: {battle.CustomLevel}, Final StageID: {battle.StageId}");
     }
 
+    // =========================================================================
+    // 【修改后】OnBattleEnd 彻底“静音”
+    // 删除了所有发奖逻辑，只处理失败退出和Miracle更新
+    // 奖励逻辑全部由 DropManager -> HandleBattleWinRewards 触发，防止双倍
+    // =========================================================================
     public override async ValueTask OnBattleEnd(BattleInstance battle, PVEBattleResultCsReq req)
     {
-      foreach (var miracle in RogueMiracles.Values) miracle.OnEndBattle(battle);
+        foreach (var miracle in RogueMiracles.Values) miracle.OnEndBattle(battle);
 
-    // 战斗失败处理
-    if (req.EndStatus != BattleEndStatus.BattleEndWin)
-    {
-        await QuitRogue();
-        return;
-    }
+        // 1. 输了 -> 退出
+        if (req.EndStatus != BattleEndStatus.BattleEndWin)
+        {
+            await QuitRogue();
+            return;
+        }
 
-    // 检查是否是 BOSS 房
-    bool isFinalBoss = CurRoom!.NextSiteIds.Count == 0 || CurRoom.Excel.RogueRoomType == 7;
-
-    if (isFinalBoss)
-    {
-        // 注意：这里【不要】调用 QuitRogue()，也不要在这里发奖（交给上面的 HandleBattleWinRewards）
-        // 只需要确保玩家不被踢出场景即可。
-        Console.WriteLine("[Rogue] 战斗结束，等待结算包下发，玩家留守场景。");
-    }
-    // 普通怪物的逻辑会自动在 DropManager 里触发 RollBuff
+        // 2. 赢了 -> 什么都不做！
+        // 因为 DropManager 会自动调用 HandleBattleWinRewards 来发奖、发Buff、弹窗。
+        // 如果这里再写代码，就会导致执行两次，玩家获得双倍奖励。
+        
+        // 仅留日志用于调试
+        Console.WriteLine("[Rogue] OnBattleEnd: 战斗结束流程完成 (奖励已委托 DropManager 处理)");
     }
     #endregion
 
     #region Serialization
-    // (序列化代码保持不变，为节省篇幅省略，请保留你原文件中的 Serialization 区域)
     public RogueCurrentInfo ToProto()
     {
         var proto = new RogueCurrentInfo
@@ -413,7 +370,7 @@ public class RogueInstance : BaseRogueInstance
         foreach (var room in RogueRooms) proto.RoomList.Add(room.Value.ToProto());
         return proto;
     }
-    // ... (保留你原文件后面的 ToAeonInfo 等方法)
+    
     public GameAeonInfo ToAeonInfo()
     {
         return new GameAeonInfo
@@ -452,27 +409,26 @@ public class RogueInstance : BaseRogueInstance
     }
 
     public RogueFinishInfo ToFinishInfo()
-{
-    // 只获取分值，不在这里 AddRogueScore
-    AreaExcel.ScoreMap.TryGetValue(CurReachedRoom, out var score);
-    
-    return new RogueFinishInfo
     {
-        ScoreId = (uint)score,
-        AreaId = (uint)AreaExcel.RogueAreaID,
-        IsWin = IsWin,
-        RecordInfo = new RogueRecordInfo
+        AreaExcel.ScoreMap.TryGetValue(CurReachedRoom, out var score);
+        
+        return new RogueFinishInfo
         {
-            AvatarList = { CurLineup!.BaseAvatars!.Select(avatar => new RogueRecordAvatar { 
-                Id = (uint)avatar.BaseAvatarId, 
-                AvatarType = AvatarType.AvatarFormalType, 
-                Level = (uint)(Player.AvatarManager!.GetFormalAvatar(avatar.BaseAvatarId)?.Level ?? 0), 
-                Slot = (uint)CurLineup!.BaseAvatars!.IndexOf(avatar) 
-            }) },
-            BuffList = { RogueBuffs.Select(buff => buff.ToProto()) },
-            MiracleList = { RogueMiracles.Values.Select(miracle => (uint)miracle.MiracleId) }
-        }
-    };
-}
+            ScoreId = (uint)score,
+            AreaId = (uint)AreaExcel.RogueAreaID,
+            IsWin = IsWin,
+            RecordInfo = new RogueRecordInfo
+            {
+                AvatarList = { CurLineup!.BaseAvatars!.Select(avatar => new RogueRecordAvatar { 
+                    Id = (uint)avatar.BaseAvatarId, 
+                    AvatarType = AvatarType.AvatarFormalType, 
+                    Level = (uint)(Player.AvatarManager!.GetFormalAvatar(avatar.BaseAvatarId)?.Level ?? 0), 
+                    Slot = (uint)CurLineup!.BaseAvatars!.IndexOf(avatar) 
+                }) },
+                BuffList = { RogueBuffs.Select(buff => buff.ToProto()) },
+                MiracleList = { RogueMiracles.Values.Select(miracle => (uint)miracle.MiracleId) }
+            }
+        };
+    }
     #endregion
 }
