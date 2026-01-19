@@ -144,41 +144,29 @@ public class RogueInstance : BaseRogueInstance
 
     #region Methods
     public async ValueTask HandleBattleWinRewards(BattleInstance battle)
-    {
-       // 1. 判断是否是最终 BOSS
+{
     bool isFinalBoss = CurRoom?.Excel.RogueRoomType == 7 || CurRoom?.SiteId == 13;
-
+    
     if (isFinalBoss)
     {
-        // --- 核心逻辑：注入首通奖励到结算大屏 ---
-        Console.WriteLine($"[Rogue-Drop] 检测到最终BOSS胜利，正在注入首通奖励 ID: {AreaExcel.FirstReward}");
+        // 打完 BOSS 瞬间：给奖励，不弹 Buff
+        await Player.RogueManager!.FinishRogue(AreaExcel.RogueAreaID, true);
         
-        // 调用 HandleReward 拿到增量列表 (sync 设为 true 确保总额刷新)
-        var firstPassRewards = await Player.InventoryManager!.HandleReward(AreaExcel.FirstReward, notify: false, sync: true);
-        
-        // 将奖励加入 battle 的奖励池，这样 PVEBattleResultScRsp 就会自动包含这些物品
-        if (firstPassRewards != null && firstPassRewards.Count > 0)
-        {
-            battle.RaidRewardItems.AddRange(firstPassRewards); 
-        }
-
-        // 标记通关状态，但不直接退出
         IsWin = true;
         Status = RogueStatus.Finish;
         await Player.SendPacket(new PacketSyncRogueStatusScNotify(Status));
-
-        // 【关键】：这里不执行任何 GainMoney 或 RollBuff，所以不会有 Buff 三选一弹窗
-        Console.WriteLine("[Rogue-Drop] 最终关卡：已发放奖励，拦截 Buff 选择弹窗。");
+        // 不执行 GainMoney 和 RollBuff
     }
     else
     {
-        // 2. 普通房间逻辑：给钱 + 弹 Buff
+        // 普通战斗：给钱，弹 Buff
         int waveCount = Math.Max(1, battle.Stages.Count);
         var money = Random.Shared.Next(20, 60) * waveCount;
         await GainMoney(money);
         await RollBuff(1); 
     }
-    }
+}
+   
 
     // --- 核心修改：统一使用长图 Map ID (200) ---
     private int GetMapIdFromAreaId(int areaId)
@@ -244,22 +232,28 @@ public class RogueInstance : BaseRogueInstance
         Player.LineupManager!.SetExtraLineup(ExtraLineupType.LineupNone, []);
     }
 
-    public async ValueTask QuitRogue()
+  public async ValueTask QuitRogue()
 {
+    // 1. 获取本次得分
+    AreaExcel.ScoreMap.TryGetValue(CurReachedRoom, out var score);
+
+    // 2. 正式结算周积分 (调用 Manager 的方法)
+    Player.RogueManager!.AddRogueScore(score);
+
+    // 3. 设置状态并同步
     Status = RogueStatus.Finish;
     await Player.SendPacket(new PacketSyncRogueStatusScNotify(Status));
     
-    // 弹出周积分结算大屏（内部会 AddRogueScore）
+    // 4. 发送结算大屏协议
     await Player.SendPacket(new PacketSyncRogueFinishScNotify(ToFinishInfo()));
 
-    // 【核心修改】点击退出时，不再发奖，只处理关卡解锁进度
+    // 5. 更新解锁进度并保存数据库 (这是你刚才提到的 Manager 里的新方法)
     if (IsWin)
     {
-        // 我们给 FinishRogue 增加一个参数，或者直接在这里处理进度
-        // 建议：在 RogueManager 里增加一个只处理进度的方法，或者让 FinishRogue 不再发物品
         await Player.RogueManager!.UpdateRogueProgress(AreaExcel.RogueAreaID);
     }
-    
+
+    // 6. 离开场景
     await LeaveRogue();
 }
     #endregion
@@ -451,21 +445,27 @@ public class RogueInstance : BaseRogueInstance
     }
 
     public RogueFinishInfo ToFinishInfo()
+{
+    // 只获取分值，不在这里 AddRogueScore
+    AreaExcel.ScoreMap.TryGetValue(CurReachedRoom, out var score);
+    
+    return new RogueFinishInfo
     {
-        AreaExcel.ScoreMap.TryGetValue(CurReachedRoom, out var score);
-        Player.RogueManager!.AddRogueScore(score);
-        return new RogueFinishInfo
+        ScoreId = (uint)score,
+        AreaId = (uint)AreaExcel.RogueAreaID,
+        IsWin = IsWin,
+        RecordInfo = new RogueRecordInfo
         {
-            ScoreId = (uint)score,
-            AreaId = (uint)AreaExcel.RogueAreaID,
-            IsWin = IsWin,
-            RecordInfo = new RogueRecordInfo
-            {
-                AvatarList = { CurLineup!.BaseAvatars!.Select(avatar => new RogueRecordAvatar { Id = (uint)avatar.BaseAvatarId, AvatarType = AvatarType.AvatarFormalType, Level = (uint)(Player.AvatarManager!.GetFormalAvatar(avatar.BaseAvatarId)?.Level ?? 0), Slot = (uint)CurLineup!.BaseAvatars!.IndexOf(avatar) }) },
-                BuffList = { RogueBuffs.Select(buff => buff.ToProto()) },
-                MiracleList = { RogueMiracles.Values.Select(miracle => (uint)miracle.MiracleId) }
-            }
-        };
-    }
+            AvatarList = { CurLineup!.BaseAvatars!.Select(avatar => new RogueRecordAvatar { 
+                Id = (uint)avatar.BaseAvatarId, 
+                AvatarType = AvatarType.AvatarFormalType, 
+                Level = (uint)(Player.AvatarManager!.GetFormalAvatar(avatar.BaseAvatarId)?.Level ?? 0), 
+                Slot = (uint)CurLineup!.BaseAvatars!.IndexOf(avatar) 
+            }) },
+            BuffList = { RogueBuffs.Select(buff => buff.ToProto()) },
+            MiracleList = { RogueMiracles.Values.Select(miracle => (uint)miracle.MiracleId) }
+        }
+    };
+}
     #endregion
 }
