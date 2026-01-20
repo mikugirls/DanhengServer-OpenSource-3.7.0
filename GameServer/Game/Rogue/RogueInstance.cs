@@ -258,26 +258,14 @@ public class RogueInstance : BaseRogueInstance
 
     #region Handlers
 
-    private async ValueTask OnRogueMonsterKill(EntityMonster monster) 
-    {
-        var relatedProps = monster.Scene.Entities.Values.OfType<EntityProp>().Where(p => p.GroupId == monster.GroupId);
-        foreach (var prop in relatedProps) 
-        {
-            if (prop.Excel.PropType == PropTypeEnum.PROP_ROGUE_CHEST || 
-                prop.Excel.PropType == PropTypeEnum.PROP_ROGUE_REWARD_OBJECT ||
-                prop.Excel.ID >= 60000) 
-            {
-                await prop.SetState(PropStateEnum.ChestClosed);
-            }
-        }
-    }
+    
 
   public override void OnBattleStart(BattleInstance battle)
     {
         base.OnBattleStart(battle);
         if (CurRoom == null) return;
 
-        battle.OnMonsterKill += OnRogueMonsterKill;
+       
         battle.MappingInfoId = 0;
         battle.StaminaCost = 0;
 
