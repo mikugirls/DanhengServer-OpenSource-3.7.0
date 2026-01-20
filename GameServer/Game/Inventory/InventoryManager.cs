@@ -566,6 +566,8 @@ for (int i = 0; i < wave; i++)
 
         return resItems; 
     }
+    }
+	   
 
     public async ValueTask<(int, ItemData?)> HandleRelic(
         int relicId, int uniqueId, int level, int mainAffixId = 0, List<(int, int)>? subAffixes = null)
