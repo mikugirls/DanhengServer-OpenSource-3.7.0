@@ -140,8 +140,50 @@ public class DropManager(PlayerInstance player) : BasePlayerManager(player)
         var rogue = Player.RogueManager?.GetRogueInstance() as RogueInstance;
         if (rogue == null) return;
         await rogue.HandleBattleWinRewards(battle);
+        // 2. 【核心新增】在此处显式解锁肉鸽场景中的门和宝箱
+        await UnlockRogueSceneObjects(battle);
     }
+    /// <summary>
+    /// 模拟宇宙专项：战斗胜利后解锁当前 Group 的门和宝箱
+    /// </summary>
+    private async ValueTask UnlockRogueSceneObjects(BattleInstance battle)
+    {
+        var scene = Player.SceneInstance;
+        if (scene == null) return;
 
+        // 获取当前战斗中所有怪物的 GroupId（通常只有一个）
+        var monsterGroups = battle.EntityMonsters.Select(m => m.GroupId).Distinct().ToList();
+
+        // 找到同组的所有物件
+        var relatedProps = scene.Entities.Values
+            .OfType<EntityProp>()
+            .Where(p => monsterGroups.Contains(p.GroupId))
+            .ToList();
+
+        if (relatedProps.Count == 0) return;
+
+        foreach (var prop in relatedProps)
+        {
+            // 处理传送门：从 CheckPointDisable(7) 变为 CheckPointEnable(8)
+            if (prop.Excel.PropType == PropTypeEnum.PROP_ROGUE_DOOR)
+            {
+                if (prop.State == PropStateEnum.CheckPointDisable)
+                {
+                    Console.WriteLine($"[Rogue-Drop] 战斗胜利，解锁传送门: 实体ID {prop.EntityId}");
+                    await prop.SetState(PropStateEnum.CheckPointEnable);
+                }
+            }
+            // 处理肉鸽宝箱：从 ChestLocked(11) 变为 ChestClosed(12)
+            else if (prop.Excel.PropType == PropTypeEnum.PROP_ROGUE_CHEST || prop.Excel.ID >= 60000)
+            {
+                if (prop.State == PropStateEnum.ChestLocked)
+                {
+                    Console.WriteLine($"[Rogue-Drop] 战斗胜利，解锁宝箱封印: 实体ID {prop.EntityId}");
+                    await prop.SetState(PropStateEnum.ChestClosed);
+                }
+            }
+        }
+    }
     private async ValueTask HandleCollegeSettlement(BattleInstance battle)
     {
         var excel = battle.CollegeConfigExcel!;
