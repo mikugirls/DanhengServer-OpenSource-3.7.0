@@ -36,6 +36,11 @@ public class PlayerData : BaseDatabaseDataHelper
 	// 在 PlayerData 类里面添加这个属性
 	// 0 或者 10 代表初始状态（只解锁世界1）
 	public int RogueUnlockProgress { get; set; } = 110;
+	// =========================================================================
+    // 【新增】模拟宇宙已通关区域 ID 记录
+    // 用途：存储如 "110,120,130,131" 的字符串，用于判断首通奖励和关卡解锁
+    // =========================================================================
+    public string RogueFinishedAreaIds { get; set; } = "";
     // 在 PlayerData 类中添加
     public uint RogueScore { get; set; } = 0; // 当前周累积的模拟宇宙积分
     public long LastRogueScoreUpdate { get; set; } = 0; // 上次积分更新的时间戳（秒）
