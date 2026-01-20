@@ -174,7 +174,7 @@ public class DropManager(PlayerInstance player) : BasePlayerManager(player)
                 }
             }
             // 处理肉鸽宝箱：从 ChestLocked(11) 变为 ChestClosed(12)
-            else if (prop.Excel.PropType == PropTypeEnum.PROP_ROGUE_CHEST || prop.Excel.ID >= 60000)
+            else if (prop.Excel.PropType == PropTypeEnum.PROP_ROGUE_CHEST)
             {
                 if (prop.State == PropStateEnum.ChestLocked)
                 {
