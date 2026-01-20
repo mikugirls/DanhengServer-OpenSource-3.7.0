@@ -509,32 +509,96 @@ public async ValueTask HandleTakeRogueScoreReward(TakeRogueScoreRewardCsReq req)
     }
 
    // 【修改】去掉 static，让它读取玩家进度
+    // =========================================================================
+    // 【修改后的 ToAreaProto】
+    // 逻辑：发送关卡列表给客户端，告诉它哪些解锁了，哪些领过奖了
+    // =========================================================================
     public RogueAreaInfo ToAreaProto()
     {
         var manager = GetCurrentManager();
         if (manager == null) return new RogueAreaInfo();
 
-        // 获取当前进度 (我们在 PlayerData 里初始设为了 110)
-        int progress = Player.Data.RogueUnlockProgress;
+        // 1. 获取已通关 ID 列表 (例如: {110, 120, 130})
+        var clearedSet = GetClearedAreaIds();
+
+        // 2. 准备工作：建立一张表，记录 "第几世界 -> 这个世界难度1的ID"
+        //    例如: {1: 110, 2: 120, 3: 130...}
+        //    这用于判断跨世界解锁 (比如打通世界2，解锁世界3)
+        var worldBaseIds = GameData.RogueAreaConfigData.Values
+            .Where(x => x.Difficulty == 1) // 只看难度1
+            .GroupBy(x => x.AreaProgress)  // 按进度分组
+            .ToDictionary(g => g.Key, g => g.First().RogueAreaID);
 
         return new RogueAreaInfo
         {
             RogueAreaList =
             {
-                manager.RogueAreaIDList.Select(x => new RogueArea
+                manager.RogueAreaIDList.Select(areaId => 
                 {
-                    AreaId = (uint)x,
-                    // 【关键】如果 关卡ID <= 进度，状态设为 FirstPass (已解锁)
-                    // 否则设为 Close (未解锁)
-                  // 【核心修复】
-                    // 1. 如果 x < progress: 说明这一关已经打过去了 -> FirstPass (已通关)
-                    // 2. 如果 x == progress: 说明刚好解锁到这一关 -> Unlock (已解锁)
-                    // 3. 如果 x > progress: 说明是后面的关卡 -> Lock (锁定)
-					AreaStatus = x <= progress ? RogueAreaStatus.Unlock : RogueAreaStatus.Lock,
+                    // 容错：如果 Excel 里没这关，直接锁住
+                    if (!GameData.RogueAreaConfigData.TryGetValue(areaId, out var areaConfig))
+                        return new RogueArea { AreaId = (uint)areaId, AreaStatus = RogueAreaStatus.Lock };
+
+                    var status = RogueAreaStatus.Lock;
+
+                    // --- 【核心解锁判定】 ---
                     
-                    // 【关键】设为 false，表示“首通奖励还没领”
-                    // 以后你写了奖励系统，把这里改成读取数据库状态即可
-                    HasTakenReward = false
+                    // 情况 A: 这一关我已经打通了 -> 肯定是解锁的
+                    if (clearedSet.Contains(areaId))
+                    {
+                        status = RogueAreaStatus.Unlock;
+                    }
+                    else
+                    {
+                        // 情况 B: 没打通，检查前置条件是否满足
+                        int preAreaId = -1;
+
+                        if (areaConfig.Difficulty > 1)
+                        {
+                            // 分支 1：高难度关卡 (例如 131, 难度2)
+                            // 前置条件：必须通关同一个世界的上一难度 (即 130)
+                            // 规律：ID 减 1
+                            preAreaId = areaId - 1;
+                        }
+                        else
+                        {
+                            // 分支 2：新世界入口 (例如 130, 世界3难度1)
+                            // 前置条件：必须通关上一个世界的难度 1
+                            // 逻辑：当前进度(3) - 1 = 2，去表里查进度2对应的 ID (120)
+                            int preProgress = areaConfig.AreaProgress - 1;
+                            
+                            if (worldBaseIds.TryGetValue(preProgress, out int prevWorldId))
+                            {
+                                preAreaId = prevWorldId; // 找到了前置世界ID
+                            }
+                            else if (preProgress < 1) 
+                            {
+                                // 如果没有前置进度 (比如世界1的前面是0)，说明是第一关 -> 默认解锁
+                                status = RogueAreaStatus.Unlock;
+                            }
+                        }
+
+                        // 如果计算出了前置 ID，且前置 ID 已经打通了 -> 解锁当前关
+                        if (status == RogueAreaStatus.Lock && preAreaId != -1)
+                        {
+                            if (clearedSet.Contains(preAreaId))
+                            {
+                                status = RogueAreaStatus.Unlock;
+                            }
+                        }
+                    }
+
+                    // --- 【奖励领取判定】 ---
+                    // 列表里有 ID = 已通关 = 已领奖
+                    // 客户端会根据这个显示那个“首通奖励”的小勾勾
+                    bool hasTaken = clearedSet.Contains(areaId);
+
+                    return new RogueArea
+                    {
+                        AreaId = (uint)areaId,
+                        AreaStatus = status,
+                        HasTakenReward = hasTaken
+                    };
                 })
             }
         };
