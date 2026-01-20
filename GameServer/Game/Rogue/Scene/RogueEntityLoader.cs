@@ -163,7 +163,7 @@ public class RogueEntityLoader(SceneInstance scene, PlayerInstance player) : Sce
                 };
             }
 
-            await prop.SetState(PropStateEnum.Open);
+            await prop.SetState(PropStateEnum.CheckPointDisable);
         }
         else
         {
