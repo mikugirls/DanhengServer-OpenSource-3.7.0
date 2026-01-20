@@ -92,38 +92,68 @@ public class RogueManager(PlayerInstance player) : BasePlayerManager(player)
     // 【新增辅助方法 1】读取已通关列表
     // 作用：把数据库里的 "110,120,130" 字符串变成集合，方便快速检查
     // =========================================================================
+   // =========================================================================
+    // 【修改后的 GetClearedAreaIds】(带自动初始化功能)
+    // 逻辑：读取列表 -> 如果发现缺了 100/110 -> 补全并存库 -> 返回列表
+    // =========================================================================
     private HashSet<int> GetClearedAreaIds()
     {
-        // 读取 PlayerData 里的新字段
+        // 1. 解析现有数据
+        HashSet<int> set;
+        if (string.IsNullOrEmpty(Player.Data.RogueFinishedAreaIds))
+        {
+            set = new HashSet<int>();
+        }
+        else
+        {
+            set = Player.Data.RogueFinishedAreaIds
+                .Split(',')
+                .Where(s => !string.IsNullOrEmpty(s))
+                .Select(int.Parse)
+                .ToHashSet();
+        }
+
+        // 2. 【核心逻辑】检查并注入默认通关记录 (100, 110)
+        // HashSet.Add() 返回 true 表示该元素原先不存在，被成功添加了
+        bool isChanged = false;
+
+        // 强制添加 100 (教学关/前置)
+        if (set.Add(100)) isChanged = true;
+        
+        // 强制添加 110 (第一世界)
+        if (set.Add(110)) isChanged = true;
+
+        // 3. 如果发生了变动 (说明是新号或者数据不全)，立即保存回数据库
+        if (isChanged)
+        {
+            Console.WriteLine("[RogueManager] 检测到缺失初始关卡记录，已自动补全 100, 110 并保存。");
+            
+            Player.Data.RogueFinishedAreaIds = string.Join(",", set);
+            
+            // 触发数据库保存
+            DatabaseHelper.ToSaveUidList.SafeAdd(Player.Uid);
+        }
+
+        return set;
+    }
+    // =========================================================================
+    // 【新增辅助方法 2】保存通关记录
+    // 作用：通关后把 ID 加进去，转成字符串存回数据库
+    // =========================================================================
+    // =========================================================================
+    // 【修改后的 GetClearedAreaIds】(纯净读取版)
+    // 逻辑：只读取数据库，不要强制塞 110 进去，否则会导致开局就算已领奖
+    // =========================================================================
+    private HashSet<int> GetClearedAreaIds()
+    {
         if (string.IsNullOrEmpty(Player.Data.RogueFinishedAreaIds)) 
             return new HashSet<int>();
             
         return Player.Data.RogueFinishedAreaIds
             .Split(',')
-            .Where(s => !string.IsNullOrEmpty(s)) // 防止空字符报错
+            .Where(s => !string.IsNullOrEmpty(s))
             .Select(int.Parse)
             .ToHashSet();
-    }
-
-    // =========================================================================
-    // 【新增辅助方法 2】保存通关记录
-    // 作用：通关后把 ID 加进去，转成字符串存回数据库
-    // =========================================================================
-    private void SaveClearedAreaId(int areaId)
-    {
-        var clearedSet = GetClearedAreaIds();
-        
-        // 如果已经存过了，就不用再存了
-        if (clearedSet.Contains(areaId)) return; 
-
-        // 加入集合
-        clearedSet.Add(areaId);
-        
-        // 转回字符串存入 Player.Data
-        Player.Data.RogueFinishedAreaIds = string.Join(",", clearedSet);
-        
-        // 标记保存到数据库 (这一步很重要，否则重启服务器记录就丢了)
-        DatabaseHelper.ToSaveUidList.SafeAdd(Player.Uid);
     }
   // --- 【修改 StartRogue 方法】 ---
     public async ValueTask StartRogue(int areaId, int aeonId, List<int> disableAeonId, List<int> baseAvatarIds)
@@ -513,20 +543,22 @@ public async ValueTask HandleTakeRogueScoreReward(TakeRogueScoreRewardCsReq req)
     // 【修改后的 ToAreaProto】
     // 逻辑：发送关卡列表给客户端，告诉它哪些解锁了，哪些领过奖了
     // =========================================================================
+    // =========================================================================
+    // 【修改后的 ToAreaProto】(完美逻辑版)
+    // =========================================================================
     public RogueAreaInfo ToAreaProto()
     {
         var manager = GetCurrentManager();
         if (manager == null) return new RogueAreaInfo();
 
-        // 1. 获取已通关 ID 列表 (例如: {110, 120, 130})
+        // 1. 获取已真正打通的 ID 列表
+        // 注意：刚开始玩时，这里面是空的
         var clearedSet = GetClearedAreaIds();
 
-        // 2. 准备工作：建立一张表，记录 "第几世界 -> 这个世界难度1的ID"
-        //    例如: {1: 110, 2: 120, 3: 130...}
-        //    这用于判断跨世界解锁 (比如打通世界2，解锁世界3)
+        // 2. 预处理前置世界映射
         var worldBaseIds = GameData.RogueAreaConfigData.Values
-            .Where(x => x.Difficulty == 1) // 只看难度1
-            .GroupBy(x => x.AreaProgress)  // 按进度分组
+            .Where(x => x.Difficulty == 1)
+            .GroupBy(x => x.AreaProgress)
             .ToDictionary(g => g.Key, g => g.First().RogueAreaID);
 
         return new RogueAreaInfo
@@ -535,7 +567,6 @@ public async ValueTask HandleTakeRogueScoreReward(TakeRogueScoreRewardCsReq req)
             {
                 manager.RogueAreaIDList.Select(areaId => 
                 {
-                    // 容错：如果 Excel 里没这关，直接锁住
                     if (!GameData.RogueAreaConfigData.TryGetValue(areaId, out var areaConfig))
                         return new RogueArea { AreaId = (uint)areaId, AreaStatus = RogueAreaStatus.Lock };
 
@@ -543,54 +574,48 @@ public async ValueTask HandleTakeRogueScoreReward(TakeRogueScoreRewardCsReq req)
 
                     // --- 【核心解锁判定】 ---
                     
-                    // 情况 A: 这一关我已经打通了 -> 肯定是解锁的
-                    if (clearedSet.Contains(areaId))
+                    // 1. 特殊名单：100 (教学) 和 110 (第一世界) 默认永远解锁
+                    //    无论是否打通过，都可以进
+                    if (areaId == 100 || areaId == 110)
                     {
                         status = RogueAreaStatus.Unlock;
                     }
+                    // 2. 如果已经打通了，那肯定解锁
+                    else if (clearedSet.Contains(areaId))
+                    {
+                        status = RogueAreaStatus.Unlock;
+                    }
+                    // 3. 其他关卡：检查前置是否已打通
                     else
                     {
-                        // 情况 B: 没打通，检查前置条件是否满足
                         int preAreaId = -1;
 
                         if (areaConfig.Difficulty > 1)
                         {
-                            // 分支 1：高难度关卡 (例如 131, 难度2)
-                            // 前置条件：必须通关同一个世界的上一难度 (即 130)
-                            // 规律：ID 减 1
-                            preAreaId = areaId - 1;
+                            preAreaId = areaId - 1; // 高难度查上一难度
                         }
                         else
                         {
-                            // 分支 2：新世界入口 (例如 130, 世界3难度1)
-                            // 前置条件：必须通关上一个世界的难度 1
-                            // 逻辑：当前进度(3) - 1 = 2，去表里查进度2对应的 ID (120)
+                            // 新世界查上一进度
                             int preProgress = areaConfig.AreaProgress - 1;
-                            
                             if (worldBaseIds.TryGetValue(preProgress, out int prevWorldId))
                             {
-                                preAreaId = prevWorldId; // 找到了前置世界ID
-                            }
-                            else if (preProgress < 1) 
-                            {
-                                // 如果没有前置进度 (比如世界1的前面是0)，说明是第一关 -> 默认解锁
-                                status = RogueAreaStatus.Unlock;
+                                preAreaId = prevWorldId;
                             }
                         }
 
-                        // 如果计算出了前置 ID，且前置 ID 已经打通了 -> 解锁当前关
-                        if (status == RogueAreaStatus.Lock && preAreaId != -1)
+                        // 只有当前置关卡【真的打赢了】(在 clearedSet 里)，才解锁当前关
+                        // 这样就保证了必须打赢 110 才能解锁 120
+                        if (preAreaId != -1 && clearedSet.Contains(preAreaId))
                         {
-                            if (clearedSet.Contains(preAreaId))
-                            {
-                                status = RogueAreaStatus.Unlock;
-                            }
+                            status = RogueAreaStatus.Unlock;
                         }
                     }
 
                     // --- 【奖励领取判定】 ---
-                    // 列表里有 ID = 已通关 = 已领奖
-                    // 客户端会根据这个显示那个“首通奖励”的小勾勾
+                    // 这里的逻辑保持不变：只有在数据库列表里的，才算领过奖
+                    // 刚开始玩时 110 不在列表里 -> HasTakenReward = false (没领)
+                    // 打完一次后 110 进列表 -> HasTakenReward = true (已领)
                     bool hasTaken = clearedSet.Contains(areaId);
 
                     return new RogueArea
