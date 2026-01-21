@@ -29,7 +29,7 @@ public class HandlerGetPlayerDetailInfoCsReq : Handler
         // 2. 准备数据容器
         // 这里的 null! 告诉编译器：我知道这是 null，请无视它
 		var collection = new PlayerDataCollection(playerData, targetInventory, null!);
-        var detailInfo = playerData.ToDetailProto(); // 获取基础面板信息
+        var detailInfo = playerData.ToDetailProto(); // 获取基础面板信息哦
         var displayList = new List<DisplayAvatarDetailInfo>();
 
         // 3. 核心修复：遍历展示角色，调用你写好的“满血版”ToDetailProto
