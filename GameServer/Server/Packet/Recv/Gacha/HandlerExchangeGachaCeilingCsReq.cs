@@ -1,6 +1,7 @@
 ﻿using EggLink.DanhengServer.GameServer.Server.Packet.Send.Gacha;
 using EggLink.DanhengServer.Kcp;
 using EggLink.DanhengServer.Proto;
+using EggLink.DanhengServer.Database; // 必须引用这个来保存数据
 
 namespace EggLink.DanhengServer.GameServer.Server.Packet.Recv.Gacha;
 
