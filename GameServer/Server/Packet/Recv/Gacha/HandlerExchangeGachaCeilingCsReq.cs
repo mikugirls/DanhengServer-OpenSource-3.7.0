@@ -13,37 +13,50 @@ public class HandlerExchangeGachaCeilingCsReq : Handler
         var player = connection.Player!;
         var gachaData = player.GachaManager!.GachaData!;
 
-        // 1. 条件校验
+        // 1. 基础校验：抽数是否达标，是否已领取过
         if (gachaData.StandardCumulativeCount < 300 || gachaData.IsStandardSelected)
         {
-            await connection.SendPacket(new PacketExchangeGachaCeilingScRsp(3602));
+            await connection.SendPacket(new PacketExchangeGachaCeilingScRsp(3602)); // 错误码
             return;
         }
 
-        // 2. 调用 InventoryManager 的 AddItem 方法
-        // 既然你的 AddItem 已经写了 case ItemMainTypeEnum.AvatarCard:
-        // 它会自动判断：没角色发角色，有角色发星魂(+10000)，并且你刚加了发头像(+20000)的逻辑
+        // 2. 调用 InventoryManager 的 AddItem。
+        // 注意：AddItem 内部会判断已有角色则发星魂(ID+10000)，没有则发角色
         var result = await player.InventoryManager!.AddItem((int)req.AvatarId, 1, notify: true, sync: true);
 
         if (result != null)
         {
-            // 3. 兑换成功，标记状态并保存
-            gachaData.IsStandardSelected = true;
-            player.GachaManager.Save();
-
-            // 4. 返回成功协议包
+            // 3. 构造响应包
             var rsp = new ExchangeGachaCeilingScRsp
             {
                 Retcode = 0,
                 GachaType = req.GachaType,
-                AvatarId = req.AvatarId
+                AvatarId = req.AvatarId,
+                GachaCeiling = new GachaCeiling
+                {
+                    CeilingNum = (uint)gachaData.StandardCumulativeCount,
+                    IsClaimed = true, // 标记为已领取
+                    AvatarList = { player.GachaManager.GetGoldAvatars().Select(id => new GachaCeilingAvatar { AvatarId = (uint)id }) }
+                }
             };
+
+            // 4. 处理“转化列表” (TransferItemList)
+            // 如果 AddItem 返回的 ID 是 1xxxx (星魂)，说明发生了转化
+            if (result.ItemId == (int)req.AvatarId + 10000)
+            {
+                rsp.TransferItemList = new ItemList();
+                rsp.TransferItemList.ItemList_.Add(new Item
+                {
+                    ItemId = (uint)result.ItemId,
+                    Number = 1
+                });
+            }
+
+            // 5. 更新并保存状态
+            gachaData.IsStandardSelected = true;
+            player.GachaManager.Save();
+
             await connection.SendPacket(new PacketExchangeGachaCeilingScRsp(rsp));
-        }
-        else
-        {
-            // 如果 AddItem 返回 null (比如 ID 错误)，返回通用错误
-            await connection.SendPacket(new PacketExchangeGachaCeilingScRsp(1)); 
         }
     }
 }
