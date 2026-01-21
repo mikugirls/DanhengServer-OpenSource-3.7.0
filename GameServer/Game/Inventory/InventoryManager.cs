@@ -39,13 +39,14 @@ public class InventoryManager(PlayerInstance player) : BasePlayerManager(player)
     /// <param name="itemId">物品配置ID</param>
     /// <returns>持有数量</returns>
     public int GetItemCount(int itemId)
-	{
-    // 调用已有的 GetItem 方法获取数据对象 
-    var item = GetItem(itemId);
+    {
+        // 调用已有的 GetItem 方法获取数据对象
+        var item = GetItem(itemId);
+        
+        // 如果物品存在则返回其 Count 属性，否则返回 0
+        return item?.Count ?? 0;
+    }
     
-    [cite_start]
-	return item?.Count ?? 0;
-	}
  /// <summary>
     /// 批量添加物品（解决多物品同时获得时的显示冲突）
     /// </summary>
