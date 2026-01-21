@@ -27,7 +27,8 @@ public class HandlerGetPlayerDetailInfoCsReq : Handler
         }
 
         // 2. 准备数据容器
-        var collection = new PlayerDataCollection(playerData, targetInventory, null);
+        // 这里的 null! 告诉编译器：我知道这是 null，请无视它
+		var collection = new PlayerDataCollection(playerData, targetInventory, null!);
         var detailInfo = playerData.ToDetailProto(); // 获取基础面板信息
         var displayList = new List<DisplayAvatarDetailInfo>();
 
