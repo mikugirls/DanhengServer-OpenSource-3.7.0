@@ -147,7 +147,8 @@ public class RogueRoomInstance
     return index switch
     {
         1 => 307,
-        2 => 307,
+       
+        2 => 200713,,
         3 => 111713, // 对应 JSON 中 ContentID 改为 13901 (杰帕德)
         4 => 211713, // 对应 JSON 中 ContentID 改为 14901 (史瓦罗) - 保持下层区风格
         5 => 132713, // 对应 JSON 中 ContentID 改为 15901 (卡芙卡) - 回归仙舟风格
