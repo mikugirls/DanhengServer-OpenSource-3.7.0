@@ -294,13 +294,27 @@ public class GachaManager : BasePlayerManager
     return proto;
 }
 
-    public GetGachaInfoScRsp ToProto()
+     public GetGachaInfoScRsp ToProto()
+{
+    // 生成随机种子
+    var proto = new GetGachaInfoScRsp { GachaRandom = (uint)Random.Shared.Next(1000, 1999) };
+    
+    foreach (var banner in GameData.BannersConfig.Banners)
     {
-        var proto = new GetGachaInfoScRsp { GachaRandom = (uint)Random.Shared.Next(1000, 1999) };
-        foreach (var banner in GameData.BannersConfig.Banners)
+        // --- 【核心修复 1：隐藏已抽完的新手池】 ---
+        // 如果新手池(4001)的累计抽数已达到 50，则 continue 跳过，不加入列表
+        if (banner.GachaId == 4001 && GachaData.NewbieGachaCount >= 50) 
         {
-            proto.GachaInfoList.Add(banner.ToInfo(GetGoldAvatars(), Player.Uid));
+            continue;
         }
-        return proto;
+
+        // --- 【核心修复 2：传递 GachaData 引用】 ---
+        // 调用你修改后的 ToInfo 签名，内部会自动填充 GachaCeiling 和混淆字段
+        var info = banner.ToInfo(GetGoldAvatars(), Player.Uid, GachaData);
+        
+        proto.GachaInfoList.Add(info);
     }
+    
+    return proto;
+}
 }
