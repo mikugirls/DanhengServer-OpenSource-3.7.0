@@ -87,7 +87,7 @@ public class ActivityManager : BasePlayerManager
         return rawId;
     }
 	// 在 ActivityManager 类中添加
-	public async Task SyncTrialActivity()
+	public async System.Threading.Tasks.Task SyncTrialActivity()
 	{	
     	// 模仿签到领取后的行为：立即推送最新的全量数据
     	if (Player != null)
