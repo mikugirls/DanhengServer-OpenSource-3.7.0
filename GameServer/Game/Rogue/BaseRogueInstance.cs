@@ -56,8 +56,13 @@ public abstract class BaseRogueInstance(PlayerInstance player, RogueSubModeEnum 
     #region Buffs
 
     public virtual async ValueTask RollBuff(int amount)
-    {
+    {	// 如果没有指定命途类型（比如 0 或 100），则走通用大池子
+    	if (RogueBuffType <= 100)
+    	{
         await RollBuff(amount, 100005);
+        return;
+    	}
+        await RollBuff(amount, RogueBuffType * 100 + 1);
     }
 
     public virtual async ValueTask RollBuff(int amount, int buffGroupId, int buffHintType = 1, bool isReforge = false)
