@@ -502,36 +502,22 @@ public class InventoryManager(PlayerInstance player) : BasePlayerManager(player)
   /// <summary>
     /// 处理副本/花萼结算（解决6波掉落固定与里程显示总数问题）
     /// </summary>
-   public async ValueTask<List<ItemData>> HandleMappingInfo(int mappingId, int worldLevel, int wave = 1)
+  public async ValueTask<List<ItemData>> HandleMappingInfo(int mappingId, int worldLevel, int wave = 1)
 {
-    // ============= 增加调试打印 =============
+    // 1. 日志与配置检索
     int searchKey = mappingId * 10 + worldLevel;
-    Console.WriteLine("\n[DEBUG-MAPPING] =========================================");
-    Console.WriteLine($"[DEBUG-MAPPING] 收到结算请求 -> 副本ID: {mappingId}, 均衡等级: {worldLevel}, 波次: {wave}");
-    Console.WriteLine($"[DEBUG-MAPPING] 检索字典 Key -> {searchKey}");
+    Console.WriteLine($"\n[DEBUG-MAPPING] 收到结算请求 -> 副本ID: {mappingId}, 均衡等级: {worldLevel}, 波次: {wave}");
 
-    List<ItemData> resItems = []; 
-    
-    // 1. 获取 Mapping 配置
     GameData.MappingInfoData.TryGetValue(searchKey, out var mapping);
-    
-    if (mapping == null) 
-    {
-        Console.WriteLine($"[DEBUG-MAPPING] !!! 致命错误: 找不到该 ID 的配置 !!!");
-        Console.WriteLine("=========================================================\n");
-        return [];
-    }
+    if (mapping == null) return [];
 
-    Console.WriteLine($"[DEBUG-MAPPING] 内存匹配成功 -> 当前副本映射名Hash: {mapping.ID}");
-    Console.WriteLine($"[DEBUG-MAPPING] 该配置下的 DropItemList 包含以下物品:");
-    foreach (var d in mapping.DropItemList)
-    {
-        Console.WriteLine($"   - 物品ID: {d.ItemID} (机会: {d.Chance}%)");
-    }
-    Console.WriteLine("=========================================================\n");
+    // 定义两个列表：
+    // inventorySyncItems: 用于同步背包，装的是数据库里的【总量】
+    // uiDisplayItems: 用于返回给结算界面，装的是本次 Roll 出来的【增量】
+    List<ItemData> inventorySyncItems = []; 
+    List<ItemData> uiDisplayItems = []; 
 
-    // ===============================================
-    // 【修复点 1】: 定义累加字典
+    // 修复点 1: 定义累加字典
     Dictionary<int, long> totalCountMap = [];
 
     // 2. 开始波次大循环 (独立判定核心)
@@ -540,15 +526,12 @@ public class InventoryManager(PlayerInstance player) : BasePlayerManager(player)
         // --- A. 普通道具独立抽取 ---
         foreach (var item in mapping.DropItemList)
         {
-            // 每一波都重新 Roll 一次概率
             if (Random.Shared.Next(0, 101) <= item.Chance)
             {
                 var amount = item.ItemNum > 0 ? item.ItemNum : Random.Shared.Next(item.MinCount, item.MaxCount + 1);
                 var multiplier = (item.ItemID == 22 || item.ItemID == 2) ? 1 : ConfigManager.Config.ServerOption.ValidFarmingDropRate();
-                
                 long currentWaveCount = (long)amount * multiplier;
 
-                // 累加数量
                 totalCountMap[item.ItemID] = totalCountMap.GetValueOrDefault(item.ItemID) + currentWaveCount;
             }
         }
@@ -557,35 +540,53 @@ public class InventoryManager(PlayerInstance player) : BasePlayerManager(player)
         var relicDrops = mapping.GenerateRelicDrops();
         foreach (var relic in relicDrops)
         {
+            // 遗器是唯一 ID，总量和增量是一回事，直接加入两个列表
             var dbRelic = await AddItem(relic.ItemId, 1, notify: false, sync: false, returnRaw: true);
-            if (dbRelic != null) resItems.Add(dbRelic);
+            if (dbRelic != null)
+            {
+                inventorySyncItems.Add(dbRelic); // 背包刷新用
+                uiDisplayItems.Add(dbRelic);    // 结算界面显示用
+            }
         }
-    } // 【修复点 2】: 闭合波次大循环
-
-    // 3. 最后统一结算普通道具 (合并多波次后的总量)
-foreach (var kvp in totalCountMap)
-{
-    int itemId = kvp.Key;
-    long finalAmount = kvp.Value;
-
-    // 修复 CS1503: 将 long 显式转换为 int 传给 AddItem
-    var dbItem = await AddItem(itemId, (int)finalAmount, notify: false, sync: false, returnRaw: true);
-    
-    if (dbItem != null)
-    {
-        // 修复 CS0200 & CS1503: 
-        // 1. 克隆对象用于 UI 显示
-        var displayItem = dbItem.Clone();
-        // 2. 这里的 Count 是 ItemData 的成员变量，可以赋值
-        displayItem.Count = (int)finalAmount; 
-        // 3. 将单个对象加入列表，而不是加入整个集合
-        resItems.Add(displayItem);
     }
-	}
-await Player.SendPacket(new PacketPlayerSyncScNotify(resItems));
-// 别忘了最后返回列表
-return resItems;
-}	   
+
+    // 3. 最后统一结算普通道具
+    foreach (var kvp in totalCountMap)
+    {
+        int itemId = kvp.Key;
+        long finalAmount = kvp.Value;
+
+        // returnRaw: true 拿到的是包含最新总量的数据库原始对象
+        var dbItem = await AddItem(itemId, (int)finalAmount, notify: false, sync: false, returnRaw: true);
+        
+        if (dbItem != null)
+        {
+            // 【关键点 1】: 将含有总量的原始对象加入背包同步列表
+            inventorySyncItems.Add(dbItem);
+
+            // 【关键点 2】: 克隆并修改 Count 为增量，用于结算 UI 显示
+            var displayItem = dbItem.Clone();
+            displayItem.Count = (int)finalAmount; 
+            uiDisplayItems.Add(displayItem);
+        }
+    }
+
+    // 4. 【核心同步逻辑】
+    // 发送总量给背包 (解决背包不刷新)
+    if (inventorySyncItems.Count > 0)
+    {
+        await Player.SendPacket(new PacketPlayerSyncScNotify(inventorySyncItems));
+    }
+
+    // 如果涉及里程(22)或信用点(2)，额外强制同步一次属性栏 (解决顶栏 UI 不变)
+    if (totalCountMap.ContainsKey(22) || totalCountMap.ContainsKey(2))
+    {
+        await Player.SendPacket(new PacketPlayerSyncScNotify(Player.ToProto()));
+    }
+
+    // 5. 返回增量列表 (交给 PveBattleResultScRsp 结算界面显示 "+finalAmount")
+    return uiDisplayItems;
+}
 
     public async ValueTask<(int, ItemData?)> HandleRelic(
         int relicId, int uniqueId, int level, int mainAffixId = 0, List<(int, int)>? subAffixes = null)
