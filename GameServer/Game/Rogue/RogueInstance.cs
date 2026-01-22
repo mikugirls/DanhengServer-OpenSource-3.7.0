@@ -73,51 +73,58 @@ public class RogueInstance : BaseRogueInstance
     #endregion
 
     #region Buffs
-   public override async ValueTask RollBuff(int amount)
+ public override async ValueTask RollBuff(int amount)
 {
-    var currentAeon = this.Aeon;
-    if (currentAeon == null) return;
-
-    int pathPrefix = currentAeon.RogueBuffType; // 例如 120
-    int finalPoolId;
-    int roll = Random.Shared.Next(0, 100);
-
-    // ==========================================
-    // 1. 精英房 / BOSS 房 (RogueRoomType == 6)
-    // ==========================================
-    if (CurRoom!.Excel.RogueRoomType == 6)
+    // 1. 修正属性名：使用 AeonExcel 而不是 Aeon
+    if (AeonExcel == null)
     {
-        // 官服体感：约 40% 概率出 3 星金色池，60% 概率出 2 星紫色池
+        // 兜底：如果命途配置为空，走父类的通用大池子 (100005)
+        await base.RollBuff(amount); 
+        return;
+    }
+
+    // 2. 获取该命途的前缀 (如存护 120, 巡猎 123)
+    int pathPrefix = AeonExcel.RogueBuffType; 
+    int roll = Random.Shared.Next(0, 100);
+    int finalPoolId;
+
+    // ==========================================
+    // 情况 A：精英房 / BOSS 房 (RogueRoomType == 6)
+    // ==========================================
+    if (CurRoom != null && CurRoom.Excel.RogueRoomType == 6)
+    {
+        // 官服概率模拟：40% 概率出本命途 3 星金池，60% 概率出本命途 2 星蓝池
         if (roll < 40) 
         {
-            finalPoolId = pathPrefix * 100 + 3; // 金色池 (如 12003)
+            finalPoolId = pathPrefix * 100 + 3; // 例如 12003
         }
         else 
         {
-            finalPoolId = pathPrefix * 100 + 2; // 紫色池 (如 12002)
+            finalPoolId = pathPrefix * 100 + 2; // 例如 12002
         }
 
         await RollBuff(amount, finalPoolId);
 
-        // 奇物掉落概率：官服精英怪并不必掉，设定为 25% 概率
+        // 精英房额外奇物掉落：25% 概率触发
         if (Random.Shared.Next(0, 100) < 25)
         {
             await RollMiracle(1);
+            Console.WriteLine($"[Rogue] 玩家 {Player.Uid} 击败精英，额外掉落了奇物！");
         }
     }
     // ==========================================
-    // 2. 普通战斗房 (默认)
+    // 情况 B：普通战斗房 (或其他非精英房)
     // ==========================================
     else
     {
-        // 官服体感：大部分是 1 星，约 15% 概率进化为 2 星池
+        // 官服概率模拟：15% 概率出现 2 星蓝池，85% 概率出现 1 星白池
         if (roll < 15)
         {
-            finalPoolId = pathPrefix * 100 + 2; // 运气好出蓝色/紫色
+            finalPoolId = pathPrefix * 100 + 2; // 运气好给个蓝的
         }
         else
         {
-            finalPoolId = pathPrefix * 100 + 1; // 常规白色 (如 12001)
+            finalPoolId = pathPrefix * 100 + 1; // 常规给白的 (例如 12001)
         }
 
         await RollBuff(amount, finalPoolId);
