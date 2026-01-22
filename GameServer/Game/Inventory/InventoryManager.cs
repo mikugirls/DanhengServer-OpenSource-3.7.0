@@ -211,9 +211,9 @@ public class InventoryManager(PlayerInstance player) : BasePlayerManager(player)
         return returnRaw ? itemData : notifyClone;
     }
 
-    public async ValueTask<ItemData> PutItem(int itemId, int count, int rank = 0, int promotion = 0, int level = 0,
+  public async ValueTask<ItemData> PutItem(int itemId, int count, int rank = 0, int promotion = 0, int level = 0,
         int exp = 0, int totalExp = 0, int mainAffix = 0, List<ItemSubAffix>? subAffixes = null,
-        List<ItemSubAffix>? regorgeSubAffixes = null, int uniqueId = 0)
+        List<ItemSubAffix>? regorgeSubAffixes = null, int uniqueId = 0, bool sync = true) // <-- 在这里添加参数
     {
         if (promotion == 0 && level > 10) promotion = GameData.GetMinPromotionForLevel(level);
         var item = new ItemData
@@ -267,7 +267,20 @@ public class InventoryManager(PlayerInstance player) : BasePlayerManager(player)
 
                 Data.RelicItems.Add(item);
                 break;
-			
+        }
+
+        // --- 核心同步逻辑：如果需要同步，则发送包 ---
+        if (sync)
+        {
+            // 虚拟物品通常需要同步 PlayerData (ToProto)，其他物品同步 ItemData
+            if (GameData.ItemConfigData[itemId].ItemMainType == ItemMainTypeEnum.Virtual)
+            {
+                await Player.SendPacket(new PacketPlayerSyncScNotify(Player.ToProto()));
+            }
+            else
+            {
+                await Player.SendPacket(new PacketPlayerSyncScNotify(item));
+            }
         }
 
         return item;
