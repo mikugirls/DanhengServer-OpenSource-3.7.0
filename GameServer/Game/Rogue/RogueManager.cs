@@ -122,7 +122,34 @@ public class RogueManager(PlayerInstance player) : BasePlayerManager(player)
         
         // 如果已经存过了，就不用再存了
         if (clearedSet.Contains(areaId)) return; 
+		// 1. 如果已经通关过该区域，直接跳过
+    if (clearedSet.Contains(areaId)) return; 
 
+    // 2. 将当前区域计入已通关
+    clearedSet.Add(areaId);
+    Player.Data.RogueFinishedAreaIds = string.Join(",", clearedSet);
+
+    // 3. 【核心修正】根据通关的区域解锁对应的命途
+    // 使用 switch 处理解锁逻辑
+    	switch (areaId)
+    	{
+        case 110: // 通关世界 1
+            SaveUnlockedAeon(2); // 解锁记忆
+            break;
+        case 120: // 通关世界 2
+            SaveUnlockedAeon(7); // 解锁虚无
+            break;
+        case 130: // 通关世界 3
+            SaveUnlockedAeon(3); // 解锁巡猎
+            SaveUnlockedAeon(4); // 解锁毁灭
+            break;
+        case 140: // 通关世界 4
+            SaveUnlockedAeon(6); // 解锁欢愉
+            break;
+        case 150: // 通关世界 5
+            SaveUnlockedAeon(5); // 解锁丰饶
+            break;
+    	}
         // 加入集合
         clearedSet.Add(areaId);
         
