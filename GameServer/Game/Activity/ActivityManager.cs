@@ -7,7 +7,7 @@ using EggLink.DanhengServer.GameServer.Game.Activity.Activities;
 using EggLink.DanhengServer.GameServer.Game.Player;
 using EggLink.DanhengServer.Proto;
 using EggLink.DanhengServer.Util;
-
+using EggLink.DanhengServer.GameServer.Server.Packet.Send.Activity; 
 namespace EggLink.DanhengServer.GameServer.Game.Activity;
 
 public class ActivityManager : BasePlayerManager
@@ -93,7 +93,7 @@ public class ActivityManager : BasePlayerManager
     	if (Player != null)
     	{
         await Player.SendPacket(new PacketGetTrialActivityDataScRsp(Player));
-        LogDebug("[同步] 试用活动数据已全量同步");
+       
     	}
 	}
     private bool IsCheckInActivity(uint mainId)
