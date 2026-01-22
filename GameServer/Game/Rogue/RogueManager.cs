@@ -331,7 +331,30 @@ private List<ItemData> GenerateWorldRelicRewards(int worldIndex, int difficulty)
         { 6, [11, 12] }, // 世界8: 格拉默(11), 匹诺康尼(12)
         { 7, [13, 14] }, // 世界9: 茨冈尼亚(13), 出云(14)
     };
+  // 获取已解锁命途的集合
+private HashSet<int> GetUnlockedAeonIds()
+{
+    if (string.IsNullOrWhiteSpace(Player.Data.UnlockedAeonIds))
+        return new HashSet<int> { 1 }; // 兜底：至少有存护
 
+    return Player.Data.UnlockedAeonIds
+        .Split(',', StringSplitOptions.RemoveEmptyEntries)
+        .Select(s => int.TryParse(s, out var id) ? id : -1)
+        .Where(id => id != -1)
+        .ToHashSet();
+}
+
+// 保存新解锁的命途
+private void SaveUnlockedAeon(int aeonId)
+{
+    var unlockedSet = GetUnlockedAeonIds();
+    if (unlockedSet.Add(aeonId)) // 如果是新 ID，Add 会返回 true
+    {
+        Player.Data.UnlockedAeonIds = string.Join(",", unlockedSet);
+        // 标记：通知 DatabaseHelper 进行 5 分钟一次的物理保存
+        DatabaseHelper.ToSaveUidList.SafeAdd(Player.Uid);
+    }
+}
    public async ValueTask GrantImmersiveRewards()
 {
     var instance = RogueInstance;
@@ -371,49 +394,7 @@ private List<ItemData> GenerateWorldRelicRewards(int worldIndex, int difficulty)
         await Player.InventoryManager!.AddItem(id, 1, notify: true);
     }
 }
-    public BaseRogueInstance? GetRogueInstance()
-    {
-        if (RogueInstance != null)
-            return RogueInstance;
-
-        if (Player.ChessRogueManager?.RogueInstance != null)
-            return Player.ChessRogueManager.RogueInstance;
-
-        if (Player.RogueMagicManager?.RogueMagicInstance != null)
-            return Player.RogueMagicManager.RogueMagicInstance;
-
-        return Player.RogueTournManager?.RogueTournInstance;
-    }
-
-    #endregion
-
-    #region Serialization
-
-    public RogueInfo ToProto()
-    {
-        var proto = new RogueInfo
-        {
-            RogueGetInfo = ToGetProto()
-        };
-
-        if (RogueInstance != null) proto.RogueCurrentInfo = RogueInstance.ToProto();
-
-        return proto;
-    }
-
-    public RogueGetInfo ToGetProto()
-    {
-        return new RogueGetInfo
-        {
-            RogueScoreRewardInfo = ToRewardProto(),
-            RogueAeonInfo = ToAeonInfo(),
-            RogueSeasonInfo = ToSeasonProto(),
-            RogueAreaInfo = ToAreaProto(),
-            RogueVirtualItemInfo = ToVirtualItemProto()
-        };
-    }
-
-public async ValueTask HandleTakeRogueScoreReward(TakeRogueScoreRewardCsReq req)
+	public async ValueTask HandleTakeRogueScoreReward(TakeRogueScoreRewardCsReq req)
 {
     var score = GetRogueScore();
     // 1. 从数据库字符串恢复列表
@@ -467,6 +448,49 @@ public async ValueTask HandleTakeRogueScoreReward(TakeRogueScoreRewardCsReq req)
     if (syncItems.Count > 0) await Player.SendPacket(new PacketPlayerSyncScNotify(syncItems));
     await Player.SendPacket(new PacketTakeRogueScoreRewardScRsp(Player, successIds, displayRewards));
 }
+    public BaseRogueInstance? GetRogueInstance()
+    {
+        if (RogueInstance != null)
+            return RogueInstance;
+
+        if (Player.ChessRogueManager?.RogueInstance != null)
+            return Player.ChessRogueManager.RogueInstance;
+
+        if (Player.RogueMagicManager?.RogueMagicInstance != null)
+            return Player.RogueMagicManager.RogueMagicInstance;
+
+        return Player.RogueTournManager?.RogueTournInstance;
+    }
+
+    #endregion
+
+    #region Serialization
+
+    public RogueInfo ToProto()
+    {
+        var proto = new RogueInfo
+        {
+            RogueGetInfo = ToGetProto()
+        };
+
+        if (RogueInstance != null) proto.RogueCurrentInfo = RogueInstance.ToProto();
+
+        return proto;
+    }
+
+    public RogueGetInfo ToGetProto()
+    {
+        return new RogueGetInfo
+        {
+            RogueScoreRewardInfo = ToRewardProto(),
+            RogueAeonInfo = ToAeonInfo(),
+            RogueSeasonInfo = ToSeasonProto(),
+            RogueAreaInfo = ToAreaProto(),
+            RogueVirtualItemInfo = ToVirtualItemProto()
+        };
+    }
+
+
 
    public RogueScoreRewardInfo ToRewardProto()
 {
@@ -492,15 +516,22 @@ public async ValueTask HandleTakeRogueScoreReward(TakeRogueScoreRewardCsReq req)
 }
 
     public static RogueAeonInfo ToAeonInfo()
-    {
+    {   var unlockedIds = GetUnlockedAeonIds(); // 获取玩家自己的解锁数据
         var proto = new RogueAeonInfo
         {
             IsUnlocked = true,
-            UnlockedAeonNum = (uint)GameData.RogueAeonData.Count,
+            UnlockedAeonNum = (uint)unlockedIds.Count,
             UnlockedAeonEnhanceNum = 3
         };
-
-        proto.AeonIdList.AddRange(GameData.RogueAeonData.Keys.Select(x => (uint)x));
+		// 遍历所有配置，只下发玩家已解锁的
+    	foreach (var id in unlockedIds)
+    	{
+        if (GameData.RogueAeonData.ContainsKey(id))
+        {
+            proto.AeonIdList.Add((uint)id);
+        }
+    	}
+       
 
         return proto;
     }
