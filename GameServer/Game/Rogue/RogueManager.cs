@@ -224,62 +224,78 @@ public class RogueManager(PlayerInstance player) : BasePlayerManager(player)
 
     return totalRewards;
 }
-    // 1. 主生成逻辑
 private List<ItemData> GenerateWorldRelicRewards(int worldIndex, int difficulty)
 {
     List<ItemData> list = new();
-    int count = GetWeightedDropCount(difficulty);
+    
+    // --- 1. 确定掉落总件数 (根据世界和难度分档) ---
+    int minCount, maxCount;
+    if (worldIndex >= 7) { // 世界 7, 8, 9
+        minCount = difficulty switch { 1 => 6, 2 => 7, 3 => 8, _ => 10 };
+        maxCount = difficulty switch { 1 => 7, 2 => 8, 3 => 10, _ => 11 };
+    }
+    else if (worldIndex >= 5) { // 世界 5, 6
+        minCount = difficulty switch { 1 => 5, 2 => 6, 3 => 7, _ => 8 };
+        maxCount = difficulty switch { 1 => 6, 2 => 7, 3 => 8, _ => 9 };
+    }
+    else { // 世界 3, 4
+        minCount = difficulty switch { 1 => 4, 2 => 5, 3 => 6, 4 => 7, _ => 8 };
+        maxCount = difficulty switch { 1 => 6, 2 => 6, 3 => 7, 4 => 8, _ => 9 };
+    }
+
+    int totalCount = Random.Shared.Next(minCount, maxCount + 1);
     int[] setIds = GetWorldRelicSets(worldIndex);
 
-    for (int i = 0; i < count; i++)
+    // --- 2. 确定金装(5星)保底数量 ---
+    int goldCount = 0;
+    if (difficulty >= 3) 
     {
-        int rank = GetWeightedRarity(difficulty);
-        int rankPrefix = rank switch { 5 => 6, 4 => 5, _ => 4 };
-        int setId = setIds[Random.Shared.Next(setIds.Length)];
-        int part = Random.Shared.Next(5, 7); // 5=球, 6=绳
+        // 难度 3 及以上必定出金，设定保底区间
+        if (worldIndex >= 7) goldCount = difficulty == 3 ? Random.Shared.Next(5, 8) : Random.Shared.Next(7, 10);
+        else if (worldIndex >= 5) goldCount = difficulty == 3 ? Random.Shared.Next(2, 5) : Random.Shared.Next(4, 7);
+        else goldCount = difficulty switch { 3 => Random.Shared.Next(1, 3), 4 => Random.Shared.Next(2, 4), _ => Random.Shared.Next(3, 6) };
+        
+        // 修正：保底数不能超过总件数
+        goldCount = Math.Min(goldCount, totalCount);
+    }
 
-        // 拼接公式：品质(1位) + 套装(3位) + 部位(1位) 
-        // 例如：6 * 10000 + 314 * 10 + 5 = 63145 (出云球)
+    // --- 3. 循环生成每一件掉落 (纯随机) ---
+    for (int i = 0; i < totalCount; i++)
+    {
+        int rank;
+        if (difficulty >= 3)
+        {
+            // 难度 3 以后：先发完保底的金，剩下的全给紫
+            rank = (i < goldCount) ? 5 : 4;
+        }
+        else
+        {
+            // 难度 1-2：按概率判定
+            int goldProb = difficulty == 1 ? (worldIndex >= 7 ? 35 : (worldIndex >= 5 ? 25 : 20)) 
+                                           : (worldIndex >= 7 ? 55 : (worldIndex >= 5 ? 45 : 40));
+            
+            int roll = Random.Shared.Next(0, 100);
+            if (roll < goldProb) rank = 5;
+            else rank = Random.Shared.Next(0, 100) < 50 ? 4 : 3; // 剩下的蓝紫随机
+        }
+
+        // 品质前缀
+        int rankPrefix = rank switch { 5 => 6, 4 => 5, _ => 4 };
+        
+        // 【纯随机】独立随机套装和部位
+        int setId = setIds[Random.Shared.Next(setIds.Length)];
+        int part = Random.Shared.Next(5, 7); 
+
         int relicId = (rankPrefix * 10000) + (setId * 10) + part;
         list.Add(new ItemData { ItemId = relicId, Count = 1 });
     }
 
-    // 附赠经验素材 ID：233 为遗器精金
+    // 附赠经验素材
     list.Add(new ItemData { ItemId = 233, Count = difficulty * 2 });
     return list;
 }
 
-
-
-    // 2. 计算掉落数量权重
-    private int GetWeightedDropCount(int difficulty)
-    {
-        int roll = Random.Shared.Next(0, 100);
-        if (difficulty >= 5) return roll < 80 ? 3 : 2; // 难度5+: 80%几率掉3个
-        if (difficulty >= 3) return roll < 30 ? 3 : 2; // 难度3-4: 30%几率掉3个
-        return 2; // 低难度固定2个
-    }
-
-    // 3. 计算品质权重 (核心概率表)
-    private int GetWeightedRarity(int difficulty)
-    {
-        int roll = Random.Shared.Next(0, 100);
-        switch (difficulty)
-        {
-            case 1: // 难度1: 20%紫, 80%蓝
-                return roll < 20 ? 4 : 3;
-            case 2: // 难度2: 5%金, 55%紫, 40%蓝
-                if (roll < 5) return 5;
-                if (roll < 60) return 4;
-                return 3;
-            case 3: // 难度3: 30%金, 70%紫
-                return roll < 30 ? 5 : 4;
-            case 4: // 难度4: 60%金, 40%紫
-                return roll < 60 ? 5 : 4;
-            default: // 难度5+: 85%金, 15%紫
-                return roll < 85 ? 5 : 4;
-        }
-    }
+// 数量和概率方法已整合进主生成逻辑，无需再单独调用 GetWeightedDropCount 和 GetWeightedRarity
 
   private int[] GetWorldRelicSets(int worldIndex)
 {
