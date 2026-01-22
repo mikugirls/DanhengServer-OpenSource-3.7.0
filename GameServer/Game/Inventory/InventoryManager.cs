@@ -1239,148 +1239,167 @@ public class InventoryManager(PlayerInstance player) : BasePlayerManager(player)
     return true;
 }
 
-    public async ValueTask<bool> PromoteEquipment(int equipmentUniqueId)
+   public async ValueTask<bool> PromoteEquipment(int equipmentUniqueId)
+{
+    // 1. 获取光锥数据
+    var equipmentData = Player.InventoryManager!.Data.EquipmentItems
+        .FirstOrDefault(x => x.UniqueId == equipmentUniqueId);
+    
+    // 2. 基础验证
+    if (equipmentData == null ||
+        equipmentData.Promotion >= GameData.EquipmentConfigData[equipmentData.ItemId].MaxPromotion) 
+        return false;
+
+    // 3. 获取晋阶配置
+    var promotionConfig = GameData.EquipmentPromotionConfigData.Values
+        .FirstOrDefault(x => x.EquipmentID == equipmentData.ItemId && x.Promotion == equipmentData.Promotion);
+
+    // 4. 前置条件检查（等级、均衡等级等）
+    if (promotionConfig == null || equipmentData.Level < promotionConfig.MaxLevel ||
+        Player.Data.WorldLevel < promotionConfig.WorldLevelRequire) 
+        return false;
+
+    // 5. 【核心优化】：构造批量材料扣除列表
+    var costItems = promotionConfig.PromotionCostList
+        .Select(cost => (cost.ItemID, cost.ItemNum, 0)) // 消耗品 uniqueId 为 0
+        .ToList();
+
+    // 6. 【核心优化】：执行批量扣除并同步背包
+    // 这一步会发送一个包含所有材料消耗的单包，解决背包刷新慢的问题
+    var removed = await Player.InventoryManager!.RemoveItems(costItems, sync: true);
+    
+    // 简单的安全性检查，确保材料扣除成功
+    if (removed.Count < costItems.Count) return false;
+
+    // 7. 更新晋阶等级
+    equipmentData.Promotion++;
+
+    // 8. 同步光锥状态
+    // 将更新后的光锥数据发送给客户端，刷新光锥详细界面的属性和等级上限
+    await Player.SendPacket(new PacketPlayerSyncScNotify(equipmentData));
+
+    // 9. 数据库持久化
+    // DatabaseHelper.UpdateInstance(equipmentData); 
+
+    return true;
+}
+
+public async ValueTask<List<ItemData>> LevelUpRelic(int uniqueId, ItemCostData costData)
+{
+    var relicItem = Data.RelicItems.Find(x => x.UniqueId == uniqueId);
+    if (relicItem == null) return [];
+
+    var exp = 0;
+    var money = 0;
+    
+    // 【核心优化】：创建同步列表，收集所有背包变化
+    List<ItemData> inventoryChangeList = [];
+    List<(int, int, int)> batchRemoveList = [];
+
+    // 1. 预处理消耗逻辑
+    foreach (var cost in costData.ItemList)
     {
-        var equipmentData =
-            Player.InventoryManager!.Data.EquipmentItems.FirstOrDefault(x => x.UniqueId == equipmentUniqueId);
-        if (equipmentData == null ||
-            equipmentData.Promotion >= GameData.EquipmentConfigData[equipmentData.ItemId].MaxPromotion) return false;
-
-        var promotionConfig = GameData.EquipmentPromotionConfigData.Values
-            .FirstOrDefault(x => x.EquipmentID == equipmentData.ItemId && x.Promotion == equipmentData.Promotion);
-
-        if (promotionConfig == null || equipmentData.Level < promotionConfig.MaxLevel ||
-            Player.Data.WorldLevel < promotionConfig.WorldLevelRequire) return false;
-
-        foreach (var cost in promotionConfig.PromotionCostList)
-            await Player.InventoryManager!.RemoveItem(cost.ItemID, cost.ItemNum);
-
-        equipmentData.Promotion++;
-        await Player.SendPacket(new PacketPlayerSyncScNotify(equipmentData));
-
-        return true;
-    }
-
-    public async ValueTask<List<ItemData>> LevelUpRelic(int uniqueId, ItemCostData costData)
-    {
-        var relicItem = Data.RelicItems.Find(x => x.UniqueId == uniqueId);
-        if (relicItem == null) return [];
-
-        var exp = 0;
-        var money = 0;
-        foreach (var cost in costData.ItemList)
-            if (cost.PileItem != null)
-            {
-                GameData.RelicExpItemData.TryGetValue((int)cost.PileItem.ItemId, out var excel);
-                if (excel != null)
-                {
-                    exp += excel.ExpProvide * (int)cost.PileItem.ItemNum;
-                    money += excel.CoinCost * (int)cost.PileItem.ItemNum;
-                }
-
-                await RemoveItem((int)cost.PileItem.ItemId, (int)cost.PileItem.ItemNum);
-            }
-            else if (cost.RelicUniqueId != 0)
-            {
-                var costItem = Data.RelicItems.Find(x => x.UniqueId == cost.RelicUniqueId);
-                if (costItem != null)
-                {
-                    GameData.RelicConfigData.TryGetValue(costItem.ItemId, out var costExcel);
-                    if (costExcel == null) continue;
-
-                    if (costItem.Level > 0)
-                        foreach (var level in Enumerable.Range(0, costItem.Level))
-                        {
-                            GameData.RelicExpTypeData.TryGetValue(costExcel.ExpType * 100 + level, out var typeExcel);
-                            if (typeExcel != null)
-                                exp += typeExcel.Exp;
-                        }
-                    else
-                        exp += costExcel.ExpProvide;
-
-                    exp += costItem.Exp;
-                    money += costExcel.CoinCost;
-
-                    await RemoveItem(costItem.ItemId, 1, (int)cost.RelicUniqueId);
-                }
-            }
-
-        // credit
-        await RemoveItem(2, money);
-
-        // level up
-        GameData.RelicConfigData.TryGetValue(relicItem.ItemId, out var relicExcel);
-        if (relicExcel == null) return [];
-
-        GameData.RelicExpTypeData.TryGetValue(relicExcel.ExpType * 100 + relicItem.Level, out var relicType);
-        do
+        if (cost.PileItem != null)
         {
-            if (relicType == null) break;
-            int toGain;
-            if (relicItem.Exp + exp >= relicType.Exp)
-                toGain = relicType.Exp - relicItem.Exp;
-            else
-                toGain = exp;
-            relicItem.Exp += toGain;
-            exp -= toGain;
-
-            // level up
-            if (relicItem.Exp >= relicType.Exp)
+            GameData.RelicExpItemData.TryGetValue((int)cost.PileItem.ItemId, out var excel);
+            if (excel != null)
             {
-                relicItem.Exp = 0;
-                relicItem.Level++;
-                GameData.RelicExpTypeData.TryGetValue(relicExcel.ExpType * 100 + relicItem.Level, out relicType);
-                // relic attribute
-                if (relicItem.Level % 3 == 0)
-                {
-                    if (relicItem.SubAffixes.Count >= 4)
-                        relicItem.IncreaseRandomRelicSubAffix();
-                    else
-                        relicItem.AddRandomRelicSubAffix();
-                }
+                exp += excel.ExpProvide * (int)cost.PileItem.ItemNum;
+                money += excel.CoinCost * (int)cost.PileItem.ItemNum;
             }
-        } while (exp > 0 && relicType?.Exp > 0 && relicItem.Level < relicExcel.MaxLevel);
-
-        // leftover
-        Dictionary<int, ItemData> list = [];
-        var leftover = exp;
-        while (leftover > 0)
-        {
-            var gain = false;
-            foreach (var expItem in GameData.RelicExpItemData.Values.Reverse())
-                if (leftover >= expItem.ExpProvide)
-                {
-                    // add
-                    await PutItem(expItem.ItemID, 1);
-                    if (list.TryGetValue(expItem.ItemID, out var i))
-                    {
-                        i.Count++;
-                    }
-                    else
-                    {
-                        i = new ItemData
-                        {
-                            ItemId = expItem.ItemID,
-                            Count = 1
-                        };
-                        list[expItem.ItemID] = i;
-                    }
-
-                    leftover -= expItem.ExpProvide;
-                    gain = true;
-                    break;
-                }
-
-            if (!gain) break; // no more item
+            // 加入批量扣除列表 (sync: false)
+            batchRemoveList.Add(((int)cost.PileItem.ItemId, (int)cost.PileItem.ItemNum, 0));
         }
+        else if (cost.RelicUniqueId != 0)
+        {
+            var costItem = Data.RelicItems.Find(x => x.UniqueId == (int)cost.RelicUniqueId);
+            if (costItem != null)
+            {
+                GameData.RelicConfigData.TryGetValue(costItem.ItemId, out var costExcel);
+                if (costExcel == null) continue;
 
-        if (list.Count > 0) await Player.SendPacket(new PacketPlayerSyncScNotify(list.Values.ToList()));
+                // 计算经验逻辑（保持原样）...
+                if (costItem.Level > 0)
+                    foreach (var level in Enumerable.Range(0, costItem.Level))
+                    {
+                        GameData.RelicExpTypeData.TryGetValue(costExcel.ExpType * 100 + level, out var typeExcel);
+                        if (typeExcel != null) exp += typeExcel.Exp;
+                    }
+                else exp += costExcel.ExpProvide;
 
-        // sync
-        await Player.SendPacket(new PacketPlayerSyncScNotify(relicItem));
+                exp += costItem.Exp;
+                money += costExcel.CoinCost;
 
-        return [.. list.Values];
+                // 加入批量扣除列表，注意 uniqueId 必须传
+                batchRemoveList.Add((costItem.ItemId, 1, (int)cost.RelicUniqueId));
+            }
+        }
     }
+
+    // 执行批量扣费和扣狗粮
+    // 调用之前写的批量方法，sync 设为 false，我们最后统一发包
+    var removed = await RemoveItems(batchRemoveList, sync: false);
+    inventoryChangeList.AddRange(removed);
+
+    // 扣除金币 (Scoin)
+    await RemoveItem(2, money, sync: false);
+    // 虚拟货币由于通过 Player.ToProto 同步，不需要放入 inventoryChangeList
+
+    // 2. 执行升级逻辑 (保持原样)
+    GameData.RelicConfigData.TryGetValue(relicItem.ItemId, out var relicExcel);
+    if (relicExcel == null) return [];
+    GameData.RelicExpTypeData.TryGetValue(relicExcel.ExpType * 100 + relicItem.Level, out var relicType);
+    
+    do {
+        if (relicType == null) break;
+        int toGain = (relicItem.Exp + exp >= relicType.Exp) ? (relicType.Exp - relicItem.Exp) : exp;
+        relicItem.Exp += toGain;
+        exp -= toGain;
+
+        if (relicItem.Exp >= relicType.Exp) {
+            relicItem.Exp = 0;
+            relicItem.Level++;
+            GameData.RelicExpTypeData.TryGetValue(relicExcel.ExpType * 100 + relicItem.Level, out relicType);
+            if (relicItem.Level % 3 == 0) {
+                if (relicItem.SubAffixes.Count >= 4) relicItem.IncreaseRandomRelicSubAffix();
+                else relicItem.AddRandomRelicSubAffix();
+            }
+        }
+    } while (exp > 0 && relicType?.Exp > 0 && relicItem.Level < relicExcel.MaxLevel);
+
+    // 3. 处理经验返还 (Leftover)
+    Dictionary<int, ItemData> leftoverSync = [];
+    var leftover = exp;
+    while (leftover > 0) {
+        var gain = false;
+        foreach (var expItem in GameData.RelicExpItemData.Values.Reverse()) {
+            if (leftover >= expItem.ExpProvide) {
+                // PutItem 改为 sync: false
+                var dbItem = await PutItem(expItem.ItemID, 1, sync: false);
+                if (dbItem != null) leftoverSync[expItem.ItemID] = dbItem;
+                
+                leftover -= expItem.ExpProvide;
+                gain = true;
+                break;
+            }
+        }
+        if (!gain) break;
+    }
+
+    // 4. 【终极同步：一气呵成】
+    // A. 同步所有背包变化（扣除的狗粮、消耗的材料、新增的返还材料）
+    List<ItemData> finalSyncList = [.. inventoryChangeList, .. leftoverSync.Values];
+    if (finalSyncList.Count > 0)
+        await Player.SendPacket(new PacketPlayerSyncScNotify(finalSyncList));
+
+    // B. 同步货币 (金币)
+    await Player.SendPacket(new PacketPlayerSyncScNotify(Player.ToProto()));
+
+    // C. 同步遗器状态（等级、经验、新词条）
+    await Player.SendPacket(new PacketPlayerSyncScNotify(relicItem));
+
+    return [.. leftoverSync.Values];
+}
 
     public async ValueTask RankUpAvatar(int avatarId, ItemCostData costData)
     {
