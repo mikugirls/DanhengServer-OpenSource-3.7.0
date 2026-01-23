@@ -11,7 +11,8 @@ public class RogueMazeBuffExcel : ExcelResource
     public int Lv { get; set; }
     public int LvMax { get; set; }
     public HashName BuffName { get; set; } = new();
-
+	// 加上这个！
+    public List<RogueBuffParam> ParamList { get; set; } = new();
     public override int GetId()
     {
         return ID * 100 + Lv;
