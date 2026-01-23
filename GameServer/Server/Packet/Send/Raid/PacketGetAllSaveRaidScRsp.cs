@@ -1,8 +1,8 @@
 using EggLink.DanhengServer.GameServer.Game.Player;
 using EggLink.DanhengServer.Kcp;
 using EggLink.DanhengServer.Proto;
-using EggLink.DanhengServer.Data; // 引用 GameData 所在的命名空间
-using EggLink.DanhengServer.Enums.Mission; // 引用 MissionPhaseEnum 所在的命名空间
+using EggLink.DanhengServer.Data;
+using EggLink.DanhengServer.Enums.Mission;
 
 namespace EggLink.DanhengServer.GameServer.Server.Packet.Send.Raid;
 
@@ -12,7 +12,7 @@ public class PacketGetAllSaveRaidScRsp : BasePacket
     {
         var proto = new GetAllSaveRaidScRsp();
 
-        // 确保 RaidManager 和数据不为空
+        // 检查副本记录是否存在
         if (player.RaidManager?.RaidData?.RaidRecordDatas == null)
         {
             SetData(proto);
@@ -23,28 +23,27 @@ public class PacketGetAllSaveRaidScRsp : BasePacket
         {
             foreach (var record in dict.Values)
             {
-                // --- 1. 均衡等级过滤 ---
-                // record.WorldLevel 是该副本记录的难度等级
-                [cite_start]// player.Data.WorldLevel 是玩家当前的均衡等级 
+                // 1. 均衡等级过滤：从 PlayerInstance.Data 访问 WorldLevel
                 if (record.WorldLevel > player.Data.WorldLevel)
                     continue;
 
-                // --- 2. 主线任务解锁过滤 ---
-                [cite_start]// 从 GameData 中获取副本配置 [cite: 51]
-                if (GameData.RaidConfigData.TryGetValue((int)record.RaidId, out var raidConfig))
+                // 2. 主线任务解锁过滤
+                if (GameData.RaidConfigData.TryGetValue(record.RaidId, out var raidConfig))
                 {
-                    // 假设配置表中解锁任务字段为 UnlockMainMissionId
-                    // 如果有前置任务要求，检查玩家是否已完成该主线任务
-                    if (raidConfig.UnlockMainMissionId > 0)
+                    // 检查副本配置中的解锁任务 ID
+                    if (raidConfig.UnlockMissionId > 0)
                     {
-                        var status = player.MissionManager!.GetMainMissionStatus(raidConfig.UnlockMainMissionId);
+                        // 使用 MissionManager 提供的状态查询方法
+                        var status = player.MissionManager!.GetMainMissionStatus(raidConfig.UnlockMissionId);
+                        
+                        // 只有当任务状态为已完成（Finish）时，才同步该副本数据
                         if (status != MissionPhaseEnum.Finish)
                             continue;
                     }
                 }
 
-                // --- 3. 记录添加 ---
-                // 只要通过了等级和任务校验，就认为该副本已解锁并同步给客户端
+                // 符合条件则加入列表点亮生存手册
+                // 这里不再过滤 RaidStatus，确保“解锁即显示”
                 proto.RaidDataList.Add(new RaidData
                 {
                     RaidId = (uint)record.RaidId,
