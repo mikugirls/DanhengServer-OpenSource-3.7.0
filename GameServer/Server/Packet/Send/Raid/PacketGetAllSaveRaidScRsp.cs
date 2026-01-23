@@ -12,7 +12,7 @@ public class PacketGetAllSaveRaidScRsp : BasePacket
     {
         var proto = new GetAllSaveRaidScRsp();
 
-        // 检查副本记录是否存在
+        // 检查 RaidManager 是否初始化
         if (player.RaidManager?.RaidData?.RaidRecordDatas == null)
         {
             SetData(proto);
@@ -28,22 +28,28 @@ public class PacketGetAllSaveRaidScRsp : BasePacket
                     continue;
 
                 // 2. 主线任务解锁过滤
-                if (GameData.RaidConfigData.TryGetValue(record.RaidId, out var raidConfig))
+                // 根据 RaidConfigExcel.GetId()，Key 为 RaidID * 100 + HardLevel
+                int configId = record.RaidId * 100 + record.WorldLevel;
+                
+                if (GameData.RaidConfigData.TryGetValue(configId, out var raidConfig))
                 {
-                    // 检查副本配置中的解锁任务 ID
-                    if (raidConfig.UnlockMissionId > 0)
+                    bool isLocked = false;
+                    // 检查列表中的所有前置主线任务是否都已完成
+                    foreach (var missionId in raidConfig.MainMissionIDList)
                     {
-                        // 使用 MissionManager 提供的状态查询方法
-                        var status = player.MissionManager!.GetMainMissionStatus(raidConfig.UnlockMissionId);
-                        
-                        // 只有当任务状态为已完成（Finish）时，才同步该副本数据
+                        // 使用 MissionManager 的 GetMainMissionStatus 判定
+                        var status = player.MissionManager!.GetMainMissionStatus(missionId);
                         if (status != MissionPhaseEnum.Finish)
-                            continue;
+                        {
+                            isLocked = true;
+                            break;
+                        }
                     }
+
+                    if (isLocked) continue;
                 }
 
-                // 符合条件则加入列表点亮生存手册
-                // 这里不再过滤 RaidStatus，确保“解锁即显示”
+                // 符合条件则同步给客户端，不管状态，只要解锁了就是要点亮
                 proto.RaidDataList.Add(new RaidData
                 {
                     RaidId = (uint)record.RaidId,
