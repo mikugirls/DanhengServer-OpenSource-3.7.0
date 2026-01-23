@@ -31,6 +31,17 @@ public class RogueBuffInstance(int buffId, int buffLevel)
         {
             WaveFlag = -1
         });
+        if (BuffExcel != null && BuffExcel is RogueMazeBuffExcel mazeExcel) 
+    	{
+        for (int i = 0; i < mazeExcel.ParamList.Count; i++)
+        {
+            // 按照口令填入：Value1, Value2...
+            mazeBuff.DynamicValues[$"Value{i+1}"] = mazeExcel.ParamList[i].Value;
+        }
+    	}
+
+    	// 3. 将 Buff 加入战斗
+    	battle.Buffs.Add(mazeBuff);
     }
 
     public RogueBuff ToProto()
