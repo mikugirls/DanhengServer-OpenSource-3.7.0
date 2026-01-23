@@ -27,7 +27,7 @@ public class BattleInstance(PlayerInstance player, LineupInfo lineup, List<Stage
     
 		if (dungeonMonster != null)
 			{
-			// 如果打的是量子 BOSS，Info.FarmElementID 已经是 1101 了
+			// 如果打是量子 BOSS，Info.FarmElementID 已经是 1101 了
 			this.MappingInfoId = dungeonMonster.Info.FarmElementID;
 			Console.WriteLine($"[Battle-Fix] 自动从怪物属性提取奖励 ID: {this.MappingInfoId}");
 			}
