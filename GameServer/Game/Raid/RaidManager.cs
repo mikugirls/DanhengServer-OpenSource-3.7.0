@@ -133,9 +133,16 @@ public class RaidManager : BasePlayerManager
             {
                 // set cur lineup
                 var lineup = Player.LineupManager!.GetCurLineup()!;
-                Player.LineupManager!.SetExtraLineup(ExtraLineupType.LineupHeliobus,
-                    lineup.BaseAvatars!.Select(x => x.SpecialAvatarId > 0 ? x.SpecialAvatarId / 10 : x.BaseAvatarId)
-                        .ToList());
+    			// 构建 LineupAvatarInfo 列表，显式传递 AssistUid
+    			var raidAvatars = lineup.BaseAvatars!.Select(x => new LineupAvatarInfo 
+    			{ 
+        		BaseAvatarId = x.BaseAvatarId, 
+        		SpecialAvatarId = x.SpecialAvatarId,
+        		AssistUid = x.AssistUid // 这里的赋值至关重要
+    			}).ToList();
+
+    			// 使用我们之前写的 List<LineupAvatarInfo> 重载版本
+    			Player.LineupManager!.SetExtraLineup(ExtraLineupType.LineupHeliobus, raidAvatars);
                 await Player.SendPacket(new PacketSyncLineupNotify(Player.LineupManager!.GetCurLineup()!));
             }
 
