@@ -17,7 +17,9 @@ public class RogueMazeBuffExcel : ExcelResource
     {
         return ID * 100 + Lv;
     }
-
+	public class RogueBuffParam {
+        public float Value { get; set; }
+    }
     public override void Loaded()
     {
         GameData.RogueMazeBuffData.Add(GetId(), this);
