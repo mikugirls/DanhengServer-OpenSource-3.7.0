@@ -43,9 +43,7 @@ public class HandlerTakeTrialActivityRewardCsReq : Handler
                 };
             }
 
-            // 保留此行：现在你可以安全地在这里手动加钱，不会翻倍了。
-            player.Data.Hcoin += reward!.Hcoin; 
-
+            
             // 保留所有原始发包逻辑
             await player.SendPacket(new PacketPlayerSyncScNotify(player.ToProto(), itemList));
             await player.SendPacket(new PacketScenePlaneEventScNotify(itemList));
