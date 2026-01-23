@@ -18,7 +18,7 @@ public class PacketGetAllSaveRaidScRsp : BasePacket
             // --- 核心解锁逻辑：只卡等级和任务 ---
 
             // 1. 均衡等级过滤：玩家等级不够，这个难度的副本就不该出现在手册里
-            if (record.WorldLevel > Player.WorldLevel)
+            if (record.WorldLevel >   player.WorldLevel)
                 continue;
 
             // 2. 主线任务过滤：前置剧情没做完，副本就不该出现在手册里
