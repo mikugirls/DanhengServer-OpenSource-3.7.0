@@ -73,14 +73,14 @@ public class RogueRoomInstance
         }
         else
         {
-            // 普通位置：引入权重随机
-            int roll = Random.Shared.Next(0, 100);
-            int targetType = roll switch
-            {
-                < 45 => 1, // 45% 战斗
-                < 80 => 3, // 35% 事件
-                _ => 4     // 20% 遭遇
-            };
+           int roll = Random.Shared.Next(0, 100);
+		int targetType = roll switch
+		{
+		< 40 => 1, // 40% 普通战斗
+		< 60 => 2, // 20% 普通精英房（也就是你说的 2）
+		< 85 => 3, // 25% 事件
+		_    => 4  // 15% 休息/整备
+		};
 
             var pool = worldRoomPool.Where(r => r.RogueRoomType == targetType).ToList();
             if (pool.Count == 0) pool = worldRoomPool.Where(r => r.RogueRoomType == 1).ToList();
@@ -115,9 +115,9 @@ public class RogueRoomInstance
         {
             1 => 307,
             2 => 200713,
-            3 => 111713, // 世界 3 (杰帕德)
-            4 => 211713,
-            5 => 132713,
+            3 => 300713, // 世界 3 (杰帕德)
+            4 => 111713,
+            5 => 121713,
             6 => 122713,
             7 => 222713,
             8 => 231713,

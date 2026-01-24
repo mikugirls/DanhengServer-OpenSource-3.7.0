@@ -110,7 +110,8 @@ public class RogueEntityLoader(SceneInstance scene, PlayerInstance player) : Sce
         }
 
         // 获取怪物配置
-        GameData.RogueMonsterData.TryGetValue((int)(content * 10 + 1), out var rogueMonster);
+		int i = room.Excel.Variation > 0 ? room.Excel.Variation : 1;
+        GameData.RogueMonsterData.TryGetValue((int)(content * 10 + i), out var rogueMonster);
         if (rogueMonster == null) return null;
 
         GameData.NpcMonsterDataData.TryGetValue(rogueMonster.NpcMonsterID, out var excel);
