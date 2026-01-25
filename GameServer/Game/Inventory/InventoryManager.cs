@@ -526,8 +526,8 @@ public class InventoryManager(PlayerInstance player) : BasePlayerManager(player)
   public async ValueTask<List<ItemData>> HandleMappingInfo(int mappingId, int worldLevel, int wave = 1)
 {
     // 1. 日志与配置检索
-    int searchKey = mappingId * 10 + worldLevel;
-    Console.WriteLine($"\n[DEBUG-MAPPING] 收到结算请求 -> 副本ID: {mappingId}, 均衡等级: {worldLevel}, 波次: {wave}");
+    int searchKey = mappingId * 10 + worldLevel+1;
+    Console.WriteLine($"\n[DEBUG-MAPPING] 收到结算请求 -> 副本ID: {mappingId}, 均衡等级: {worldLevel+1}, 波次: {wave}");
 
     GameData.MappingInfoData.TryGetValue(searchKey, out var mapping);
     if (mapping == null) return [];
@@ -653,22 +653,40 @@ public class InventoryManager(PlayerInstance player) : BasePlayerManager(player)
         return (0, relic);
     }
 
-    public async ValueTask<ItemData?> ComposeItem(int composeId, int count, List<ItemCost> costData)
+   public async ValueTask<ItemData?> ComposeItem(int composeId, int count, List<ItemCost> costData)
+{
+    // 1. 批量扣除客户端传入的消耗（针对行迹转换）
+    if (costData != null && costData.Count > 0)
     {
-        // Cost items in req
-        foreach (var cost in costData)
-            await RemoveItem((int)cost.PileItem.ItemId, (int)cost.PileItem.ItemNum);
-
-        // Cost items in excel
-        GameData.ItemComposeConfigData.TryGetValue(composeId, out var composeConfig);
-        if (composeConfig == null) return null;
-        foreach (var cost in composeConfig.MaterialCost)
-            await RemoveItem(cost.ItemID, cost.ItemNum * count);
-
-        await RemoveItem(2, composeConfig.CoinCost * count);
-
-        return await AddItem(composeConfig.ItemID, count, false);
+        // 核心修复：同时传入 ItemId 和 UniqueId (第三个参数)，确保 RemoveItem 能搜到东西
+        var exchangeList = costData
+            .Select(c => ((int)c.PileItem.ItemId, (int)c.PileItem.ItemNum, (int)c.PileItem.ItemId))
+            .ToList();
+            
+        // 使用 sync: true 执行一次性同步，防止 UI 刷新冲突
+        await RemoveItems(exchangeList, true);
     }
+
+    // 2. 正常读取配置
+    GameData.ItemComposeConfigData.TryGetValue(composeId, out var composeConfig);
+    if (composeConfig == null) return null;
+
+    // 3. 扣除配置表固定消耗（针对食物合成）
+    if (composeConfig.MaterialCost.Count > 0)
+    {
+        var configCosts = composeConfig.MaterialCost
+            .Select(cost => (cost.ItemID, cost.ItemNum * count, 0))
+            .ToList();
+        await RemoveItems(configCosts, true);
+    }
+
+    // 4. 扣除信用点并强制同步全量 Player 数据（刷新合成台下方的钱）
+    await RemoveItem(2, composeConfig.CoinCost * count);
+    await Player.SendPacket(new PacketPlayerSyncScNotify(Player.ToProto()));
+
+    // 5. 添加产物并执行最后的背包对齐
+    return await AddItem(composeConfig.ItemID, count, false, sync: true);
+}
 
     public async ValueTask<ItemData?> ComposeRelic(ComposeSelectedRelicCsReq req)
     {

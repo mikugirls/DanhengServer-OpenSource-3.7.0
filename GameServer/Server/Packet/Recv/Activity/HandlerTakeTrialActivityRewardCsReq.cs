@@ -43,7 +43,7 @@ public class HandlerTakeTrialActivityRewardCsReq : Handler
                 TakenReward = true
             };
         }
-
+		connection.Player!.Data.Hcoin += reward!.Hcoin;
         
 
         // 7. 同步玩家属性 (刷新星琼顶栏)

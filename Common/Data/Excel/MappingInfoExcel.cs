@@ -34,10 +34,11 @@ public class MappingInfoExcel : ExcelResource
 
         // 2. 【核心修复逻辑】：针对 ELEMENT (进阶材料) 数据缺失的“影子补全”
         // 如果当前副本列表为空（常见于 WL 0, 1, 6），则尝试从其他均衡等级借用 ID 模板
-        if (this.FarmType == FarmTypeEnum.ELEMENT && this.DisplayItemList.Count == 0)
+       if (this.DisplayItemList.Count == 0 && 
+       (this.FarmType == FarmTypeEnum.ELEMENT || this.FarmType == FarmTypeEnum.COCOON))
         {
             // 轮询 WL 2, 3, 4, 5，直到找到一个含有材料 ID (如虚幻铸铁 110406) 的模板
-            for (int i = 2; i <= 5; i++)
+            for (int i = 1; i <= 5; i++)
             {
                 int templateKey = this.ID * 10 + i;
                 if (GameData.MappingInfoData.TryGetValue(templateKey, out var template) && template.DisplayItemList.Count > 0)
@@ -51,7 +52,7 @@ public class MappingInfoExcel : ExcelResource
 
         // 3. 原有的空检查。现在 ELEMENT 类型即便是 WL 0/1/6 也已经有了借来的 ID 列表。
         if (DisplayItemList.Count == 0) return;
-
+		
         List<int> equipDrop = [];
         Dictionary<int, List<int>> relicDrop = [];
 
@@ -70,15 +71,15 @@ public class MappingInfoExcel : ExcelResource
                 DropItemList.Add(new MappingInfoItem()
                 {
                     ItemID = 2,
-                    MinCount = (50 + WorldLevel * 10) * (int)FarmType,
-                    MaxCount = (100 + WorldLevel * 10) * (int)FarmType
+                    MinCount = (50000 + WorldLevel * 100000) * (int)FarmType,
+                    MaxCount = (100000 + WorldLevel * 100000) * (int)FarmType
                 });
                 continue;
             }
 
             GameData.ItemConfigData.TryGetValue(item.ItemID, out var excel);
             if (excel == null) continue;
-
+			//Console.WriteLine($"ID:{ID} WL:{WorldLevel} Added Material:{excel.ID}");
             // 遗器展示逻辑
             if (excel.ItemSubType == ItemSubTypeEnum.RelicSetShowOnly)
             {
@@ -102,19 +103,44 @@ public class MappingInfoExcel : ExcelResource
             // 材料类计算
             else if (excel.ItemMainType == ItemMainTypeEnum.Material)
             {
-                MappingInfoItem? drop;
+                MappingInfoItem? drop = null;
                switch (excel.PurposeType)
 	{
-    case 1: // 角色经验 (书)
-        // 官服逻辑：经验书通常是必掉的，但数量随等级提升
-        var expAmount = excel.Rarity switch
+   case 1: // 角色经验/光锥经验
+        int minCount = 1;
+        int maxCount = 1;
+
+        switch (excel.Rarity)
         {
-            ItemRarityEnum.NotNormal => WorldLevel < 3 ? 3 : 4, // 蓝色
-            ItemRarityEnum.Rare => WorldLevel < 3 ? 0 : WorldLevel - 2, // 紫色
-            _ => 1
-        };
-        drop = new MappingInfoItem(excel.ID, (int)expAmount) { Chance = 100 };
-        break;
+            case ItemRarityEnum.NotNormal: // 绿色
+                minCount = (WorldLevel < 3) ? 10 : 15;
+                maxCount = (WorldLevel < 3) ? 30 : 45;
+                break;
+            case ItemRarityEnum.Normal: // 蓝色
+                minCount = (WorldLevel < 3) ? 5 : 10;
+                maxCount = (WorldLevel < 3) ? 15 : 25;
+                break;
+            case ItemRarityEnum.Rare: // 紫色
+                minCount = (WorldLevel < 3) ? 0 : WorldLevel;
+                maxCount = (WorldLevel < 3) ? 0 : WorldLevel * 2;
+                break;
+            default:
+                minCount = 1;
+                maxCount = 2;
+                break;
+        }
+
+        // 【关键改动】：如果该等级不掉落，仅将 drop 设为 null，而不是 return
+        if (maxCount > 0)
+        {
+            drop = new MappingInfoItem(excel.ID, 0) 
+            { 
+                Chance = 100, 
+                MinCount = minCount, 
+                MaxCount = maxCount 
+            };
+        }
+        break; // 这里一个 break 结束 case 1
 
     case 2: // 晋阶材料 (大世界BOSS/虚幻铸铁等)
         // 官服逻辑：必掉，数量 2-3 或 4-5
@@ -127,17 +153,54 @@ public class MappingInfoExcel : ExcelResource
         };
         break;
 
-    case 3: // 行迹材料 (花萼赤)
-        // 【核心随机点】官服最典型的随机：绿必掉，蓝高概率，紫低概率
-        int traceChance = excel.Rarity switch
+  
+case 3: // 行迹材料 (花萼赤)
+    // 1. 定义数量逻辑
+    int finalMin = 1;
+    int finalMax = 1;
+
+    // --- 绿色：NotNormal (最低级) ---
+    if (excel.Rarity == ItemRarityEnum.NotNormal) 
+    {
+        // 满足你的需求：均衡等级 1 掉落 10 个
+        // 这里的 WorldLevel 已经是你修正偏移（+1）后的值了
+        finalMin = WorldLevel switch
         {
-            ItemRarityEnum.Normal => 100,                     // 绿色：100%
-            ItemRarityEnum.NotNormal => 30 + (WorldLevel * 10), // 蓝色：WL3(60%) -> WL6(90%)
-            ItemRarityEnum.Rare => 5 + (WorldLevel * 4),      // 紫色：WL3(17%) -> WL6(29%)
-            _ => 100
+            0 => 5,   // 以防万一还是 0
+            1 => 10,  // 均衡等级 1 必掉 10 个
+            2 => 12,
+            3 => 15,
+            4 => 18,
+            >= 5 => 20, // 均衡 5-6 掉 20 个
+            _ => 10
         };
-        drop = new MappingInfoItem(excel.ID, 1) { Chance = traceChance };
-        break;
+        finalMax = finalMin; // 如果想随机掉 10-12 个，可以写 finalMin + 2
+    }
+    // --- 蓝色：Normal (中级) ---
+    else if (excel.Rarity == ItemRarityEnum.Normal) 
+    {
+        finalMin = (WorldLevel >= 1) ? 2 : 1; 
+        finalMax = finalMin + 2; 
+    }
+
+    // 2. 概率逻辑
+    int traceChance = excel.Rarity switch
+    {
+        ItemRarityEnum.NotNormal => 100, // 绿色必须 100% 必掉
+        ItemRarityEnum.Normal => Math.Min(100, 50 + (WorldLevel * 10)), 
+        ItemRarityEnum.Rare => 10 + (WorldLevel * 5),
+        _ => 100
+    };
+
+    // 3. 【关键修正点】：第二个参数传 0 ！！
+    // 只有传 0，HandleMappingInfo 才会去读取 MinCount 和 MaxCount
+    drop = new MappingInfoItem(excel.ID, 0) 
+    { 
+        Chance = traceChance,
+        MinCount = finalMin,
+        MaxCount = finalMax 
+    };
+    break;
 
     case 5: // 光锥经验 (提纯以太)
         // 数量略有随机
