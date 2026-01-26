@@ -19,16 +19,19 @@ public class HandlerGetAssistListCsReq : Handler
 
         var rsp = new GetAssistListScRsp { Retcode = 0 };
 
-        // 1. 动态判断数据库类型，选择正确的随机函数
-        string randomFunc = ConfigManager.Config.Database.DatabaseType == "mysql" ? "RAND()" : "RANDOM()";
-
-        // 2. 从数据库读取有助战设置的离线玩家，并随机排序
-        var assistDataList = DatabaseHelper.sqlSugarScope?
+        // 1. 获取所有有助战设置的玩家 ID（排除自己）
+        // 关键修复：先 ToList() 到内存，绕过 SqlSugar 对 JSON 字段 Count 的解析限制
+        var rawAssistData = DatabaseHelper.sqlSugarScope?
             .Queryable<AvatarData>()
+            .Where(it => it.Uid != connection.Player.Uid)
+            .ToList(); // 先拉取数据
+
+        // 2. 在内存中过滤掉助战列表为空的玩家，并随机排序取前 10 条
+        var assistDataList = rawAssistData?
             .Where(it => it.AssistAvatars != null && it.AssistAvatars.Count > 0)
-            .Where(it => it.Uid != connection.Player.Uid) // 排除掉自己
-            .OrderBy(randomFunc) // 使用对应的随机函数
-            .ToPageList(1, 10);
+            .OrderBy(_ => Guid.NewGuid()) // 内存中随机排序
+            .Take(10)
+            .ToList();
 
         if (assistDataList != null)
         {
@@ -37,13 +40,11 @@ public class HandlerGetAssistListCsReq : Handler
                 var ownerData = PlayerData.GetPlayerByUid(avatarData.Uid);
                 if (ownerData == null) continue;
 
-                // 3. 随机选一个助战角色 (修复泛型转换错误)
-                var randomAvatarIdObj = avatarData.AssistAvatars.RandomElement();
-                int avatarId = Convert.ToInt32(randomAvatarIdObj); 
-                
+                // 3. 随机选一个助战角色
+                var avatarId = avatarData.AssistAvatars.RandomElement();
                 if (avatarId == 0) continue;
 
-                var avatarInfo = avatarData.FormalAvatars.FirstOrDefault(a => a.AvatarId == avatarId);
+                var avatarInfo = avatarData.FormalAvatars.FirstOrDefault(a => a.BaseAvatarId == avatarId);
                 if (avatarInfo == null) continue;
 
                 // 4. 构造响应信息
@@ -52,18 +53,20 @@ public class HandlerGetAssistListCsReq : Handler
                     PlayerInfo = ownerData.ToSimpleProto(FriendOnlineStatus.Offline)
                 };
 
-                // 构造 Mock Collection 用于详情显示
+                // 获取大佬的真实仓库数据（如果可能），否则用 Mock
+                var inventory = DatabaseHelper.Instance!.GetInstanceOrCreateNew<InventoryData>((int)ownerData.Uid);
+
                 var mockCollection = new PlayerDataCollection(
                     ownerData,
-                    new InventoryData { Uid = ownerData.Uid },
+                    inventory,
                     new EggLink.DanhengServer.Database.Lineup.LineupInfo()
                 );
 
-                var detail = avatarInfo.ToDetailProto(1, mockCollection);
+                // 转换协议，使用 3.7.0 的全参数签名
+                var detail = avatarInfo.ToDetailProto(0, mockCollection);
 
-                // --- 5. 均衡等级压制 (保持与战斗逻辑对齐) ---
+                // 5. 等级平衡逻辑
                 int myWorldLevel = connection.Player.Data.WorldLevel;
-
                 if (GameData.AvatarPromotionConfigData.TryGetValue(avatarInfo.BaseAvatarId * 10 + myWorldLevel, out var config))
                 {
                     if (detail.Level > (uint)config.MaxLevel)
