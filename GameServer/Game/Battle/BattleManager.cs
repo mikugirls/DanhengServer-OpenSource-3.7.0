@@ -225,61 +225,82 @@ public class BattleManager(PlayerInstance player) : BasePlayerManager(player)
         await Player.SendPacket(new PacketSceneEnterStageScRsp(battleInstance));
         Player.SceneInstance?.OnEnterStage();
     }
-
     public async ValueTask<BattleInstance?> StartCocoonStage(int cocoonId, int wave, int worldLevel)
+{
+    if (Player.BattleInstance != null) return null;
+
+    // 1. 获取基础配置
+    GameData.CocoonConfigData.TryGetValue(cocoonId * 100 + worldLevel, out var config);
+    if (config == null) return null;
+
+    wave = Math.Max(wave, 1);
+    var cost = config.StaminaCost * wave;
+    if (Player.Data.Stamina < cost) return null;
+
+    // 2. 准备战斗波次
+    List<StageConfigExcel> stageConfigExcels = [];
+    for (var i = 0; i < wave; i++)
     {
-        if (Player.BattleInstance != null) return null;
-
-        GameData.CocoonConfigData.TryGetValue(cocoonId * 100 + worldLevel, out var config);
-        if (config == null) return null;
-
-        wave = Math.Max(wave, 1);
-
-        var cost = config.StaminaCost * wave;
-        if (Player.Data.Stamina < cost) return null;
-
-        List<StageConfigExcel> stageConfigExcels = [];
-        for (var i = 0; i < wave; i++)
-        {
-            var stageId = config.StageIDList.RandomElement();
-            GameData.StageConfigData.TryGetValue(stageId, out var stageConfig);
-            if (stageConfig == null) continue;
-
-            stageConfigExcels.Add(stageConfig);
-        }
-
-        if (stageConfigExcels.Count == 0) return null;
-
-        BattleInstance battleInstance = new(Player, Player.LineupManager!.GetCurLineup()!, stageConfigExcels)
-        {
-            StaminaCost = cost,
-            WorldLevel = config.WorldLevel,
-            CocoonWave = wave,
-            MappingInfoId = config.MappingInfoID
-        };
-
-        if (NextBattleStageConfig != null)
-        {
-            battleInstance = new BattleInstance(Player, Player.LineupManager!.GetCurLineup()!, [NextBattleStageConfig])
-            {
-                WorldLevel = Player.Data.WorldLevel
-            };
-            NextBattleStageConfig = null;
-        }
-
-        var avatarList = Player.LineupManager!.GetCurLineup()!.BaseAvatars!.Select(item =>
-                Player.SceneInstance!.AvatarInfo.Values.FirstOrDefault(x => x.AvatarInfo.AvatarId == item.BaseAvatarId))
-            .OfType<AvatarSceneInfo>().ToList();
-
-        battleInstance.AvatarInfo = avatarList;
-
-        Player.BattleInstance = battleInstance;
-        Player.QuestManager!.OnBattleStart(battleInstance);
-
-        InvokeOnPlayerEnterBattle(Player, battleInstance);
-        await ValueTask.CompletedTask;
-        return battleInstance;
+        var stageId = config.StageIDList.RandomElement();
+        GameData.StageConfigData.TryGetValue(stageId, out var stageConfig);
+        if (stageConfig == null) continue;
+        stageConfigExcels.Add(stageConfig);
     }
+    if (stageConfigExcels.Count == 0) return null;
+
+    // 3. 获取当前最新的阵容（如果是副本，LineupManager 应该已经 SetExtraLineup 包含了助战信息）
+    var currentLineup = Player.LineupManager!.GetCurLineup();
+    if (currentLineup == null) return null;
+
+    // 4. 初始化战斗实例
+    BattleInstance battleInstance = new(Player, currentLineup, stageConfigExcels)
+    {
+        StaminaCost = cost,
+        WorldLevel = config.WorldLevel,
+        CocoonWave = wave,
+        MappingInfoId = config.MappingInfoID
+    };
+
+    // 处理特殊的下一场战斗配置（如剧情强制触发）
+    if (NextBattleStageConfig != null)
+    {
+        battleInstance = new BattleInstance(Player, currentLineup, [NextBattleStageConfig])
+        {
+            WorldLevel = Player.Data.WorldLevel
+        };
+        NextBattleStageConfig = null;
+    }
+
+    // 5. 【核心修改】加载战斗角色列表
+    // 不要直接从 Player.SceneInstance!.AvatarInfo 找，因为那里没有助战实体。
+    // 我们调用 BattleInstance 里的 GetBattleAvatars，它会自动处理 Formal, Trial, 和 Assist。
+    var avatarsFromLineup = battleInstance.GetBattleAvatars();
+    var avatarList = new List<AvatarSceneInfo>();
+
+    foreach (var avatarData in avatarsFromLineup)
+    {
+        // 为每一个战斗角色（包括借来的助战）创建一个临时的场景信息对象
+        var sceneInfo = new AvatarSceneInfo(avatarData.AvatarInfo, avatarData.AvatarType, Player)
+        {
+            // 为战斗实体分配临时的 EntityId
+            EntityId = ++Player.SceneInstance!.LastEntityId 
+        };
+        avatarList.Add(sceneInfo);
+    }
+
+    // 将加载好的（包含助战的）角色列表赋值给战斗实例
+    battleInstance.AvatarInfo = avatarList;
+
+    // 6. 启动流程
+    Player.BattleInstance = battleInstance;
+    Player.QuestManager!.OnBattleStart(battleInstance);
+
+    InvokeOnPlayerEnterBattle(Player, battleInstance);
+    
+    await ValueTask.CompletedTask;
+    return battleInstance;
+}
+   
 
     public (Retcode, BattleInstance?) StartBattleCollege(int collegeId)
     {
