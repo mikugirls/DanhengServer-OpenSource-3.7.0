@@ -14,7 +14,8 @@ using static EggLink.DanhengServer.GameServer.Plugin.Event.PluginEvent;
 namespace EggLink.DanhengServer.GameServer.Game.Lineup;
 
 public class LineupManager : BasePlayerManager
-{
+{   public uint PendingAssistUid { get; set; } = 0;
+	public uint PendingAssistAvatarId { get; set; } = 0;
     public LineupManager(PlayerInstance player) : base(player)
     {
         LineupData = DatabaseHelper.Instance!.GetInstanceOrCreateNew<LineupData>(player.Uid);
@@ -109,7 +110,8 @@ public class LineupManager : BasePlayerManager
             {
                 var lineup = new LineupInfo
                 {
-                    Name = "",
+                    // 【只改这一行】直接从数据库字典尝试取名，取不到则用模型默认值
+                    Name = LineupData.Lineups.GetValueOrDefault(i)?.Name ?? "",
                     LineupType = 0,
                     BaseAvatars = [],
                     LineupData = LineupData,
@@ -138,7 +140,28 @@ public class LineupManager : BasePlayerManager
 
         return true;
     }
+	public async ValueTask SetLineupName(int lineupIndex, string newName)
+    {
+        // 1. 【取值】从 Player 持有的 LineupData 字典中取出对应的对象
+        // 这就是你强调的“从数据库/Player.Data取”
+        if (LineupData.Lineups.TryGetValue(lineupIndex, out var lineup))
+        {
+            // 2. 【赋值】更新内存中的名字
+            // 如果传入的 newName 为空，这里会保留模型默认值或设为空
+            lineup.Name = newName ?? ""; 
 
+            // 3. 【存库】调用你 DatabaseHelper 里的静态方法执行更新
+            // 注意：这里必须用你源码里的 SaveDatabaseType
+            DatabaseHelper.SaveDatabaseType(LineupData);
+
+            // 4. 【同步】发送同步包
+            // 这里的 PacketSyncLineupNotify 会调用 lineup.ToProto()
+            // 而 ToProto() 内部会执行 Name = Name，从而实现“从数据库取值再赋值给协议”
+            await Player.SendPacket(new PacketSyncLineupNotify(lineup));
+            
+            // 可选：如果你想确保万无一失，可以在这里再调用一次 GetAllLineup() 刷新列表
+        }
+    }
     public void SetExtraLineup(ExtraLineupType type, List<int> baseAvatarIds, bool refresh = false)
     {
         if (type == ExtraLineupType.LineupNone)

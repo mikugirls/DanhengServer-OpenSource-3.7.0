@@ -23,7 +23,7 @@ public class LineupData : BaseDatabaseDataHelper
 
 public class LineupInfo
 {
-    public string? Name { get; set; }
+    public string Name { get; set; } = "";
     public int LineupType { get; set; }
     public int LeaderAvatarId { get; set; }
     public List<LineupAvatarInfo>? BaseAvatars { get; set; }
