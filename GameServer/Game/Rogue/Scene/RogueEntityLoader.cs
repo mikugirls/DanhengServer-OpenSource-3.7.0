@@ -133,65 +133,79 @@ public class RogueEntityLoader(SceneInstance scene, PlayerInstance player) : Sce
     return null;
 }
 
-    public override async ValueTask<EntityProp?> LoadProp(PropInfo info, GroupInfo group, bool sendPacket = false)
+public override async ValueTask<EntityProp?> LoadProp(PropInfo info, GroupInfo group, bool sendPacket = false)
+{
+    // 1. 获取 Rogue 实例并进行空检查，彻底消除 CS8602 警告
+    var rogueInstance = Player.RogueManager?.RogueInstance;
+    if (rogueInstance == null) return null;
+
+    var room = rogueInstance.CurRoom;
+    if (room == null) return null;
+
+    GameData.MazePropData.TryGetValue(info.PropID, out var propExcel);
+    if (propExcel == null) return null;
+
+    var prop = new RogueProp(Scene, propExcel, group, info);
+
+    // 2. 处理模拟宇宙传送门逻辑
+    if (RogueDoorPropIds.Contains(prop.PropInfo.PropID))
     {
-        var room = Player.RogueManager?.RogueInstance?.CurRoom;
-        if (room == null) return null;
-        var excel = room.Excel;
-        if (excel == null) return null;
-
-        GameData.MazePropData.TryGetValue(info.PropID, out var propExcel);
-        if (propExcel == null) return null;
-
-        var prop = new RogueProp(Scene, propExcel, group, info);
-
-        if (RogueDoorPropIds.Contains(prop.PropInfo.PropID))
+        var nextSiteIds = room.NextSiteIds;
+        if (nextSiteIds == null || nextSiteIds.Count == 0)
         {
-            var index = NextRoomIds.Count;
-            var nextSiteIds = room.NextSiteIds;
-            if (nextSiteIds.Count == 0)
-            {
-                // exit
-                prop.CustomPropId = 1000;
-            }
-            else
-            {
-                index = Math.Min(index, nextSiteIds.Count - 1); // Sanity check
-                var nextRoom = Player.RogueManager?.RogueInstance?.RogueRooms[nextSiteIds[index]];
-                prop.NextSiteId = nextSiteIds[index];
-                prop.NextRoomId = nextRoom!.Excel?.RogueRoomID ?? 0;
-                NextRoomIds.Add(prop.NextRoomId);
-
-                prop.CustomPropId = nextRoom!.Excel!.RogueRoomType switch // door style
-                {
-                    3 => 1022,
-                    8 => 1022,
-                    5 => 1023,
-                    _ => 1021
-                };
-            }
-			
-        var roomType = room.Excel?.RogueRoomType ?? 0;
-    
-		// 3: 事件, 5: 商店, 8: 休息/BOSS前, 10: 遭遇(如果遭遇也要进门即开的话)
-		if (roomType == 3 || roomType == 5 || roomType == 4 || roomType == 8)
-		{
-        // 非战斗类房间，初始化即为开启状态
-        await prop.SetState(PropStateEnum.Open);
-		}
-		else
-		{
-        // 其他房间（如战斗房）初始为关闭，等待战斗结束触发
-        await prop.SetState(PropStateEnum.Closed);
-		}
+            // 最终出口 (Boss 战胜利后的传送门)
+            prop.CustomPropId = 1000;
         }
         else
         {
-            await prop.SetState(info.State);
+            var index = NextRoomIds.Count;
+            index = Math.Min(index, nextSiteIds.Count - 1);
+            
+            // 安全访问房间列表
+            if (rogueInstance.RogueRooms.TryGetValue(nextSiteIds[index], out var nextRoom))
+            {
+                prop.NextSiteId = nextSiteIds[index];
+                prop.NextRoomId = nextRoom.Excel?.RogueRoomID ?? 0;
+                NextRoomIds.Add(prop.NextRoomId);
+
+                // 获取下一间房的类型
+                var nextRoomType = nextRoom.Excel?.RogueRoomType ?? 1;
+                
+                // --- 官服样式映射修正 (基于你的反馈) ---
+                prop.CustomPropId = nextRoomType switch
+                {
+                    1 or 2 => 1021,            // 普通战斗 (1) 和 强敌 (2) 样式相同
+                    3 or 4 or 9 => 1022,       // 事件 (3)、遭遇 (4) 和 冒险 (9) 统一为事件门样式
+                    6 => 1023,                 // 精英房 (6) 使用独立样式
+                    7 => 1024,                 // 最终首领 (7) 使用独立样式
+                    5 or 8 => 1022,            // 休整 (5) 和 交易 (8) 使用事件样式
+                    _ => 1021
+                };
+            }
         }
-
-        await Scene.AddEntity(prop, sendPacket);
-
-        return prop;
+			
+        // 3. 修正门的状态初始化逻辑
+        var curRoomType = room.Excel?.RogueRoomType ?? 0;
+        
+        // 官服规则：非战斗类房间，门直接开启
+        // 3(事件), 5(休整), 8(交易), 9(冒险),4(遭遇有BUG)
+        if (curRoomType == 3 || curRoomType == 5 || curRoomType == 8 || curRoomType == 9|| curRoomType == 4)
+        {
+            await prop.SetState(PropStateEnum.Open);
+        }
+        else
+        {
+            // 战斗类房间 (1, 2, 4, 6, 7) 初始关闭，等待战斗胜利
+            await prop.SetState(PropStateEnum.Closed);
+        }
     }
+    else
+    {
+        // 非传送门物体，使用 Excel 默认状态
+        await prop.SetState(info.State);
+    }
+
+    await Scene.AddEntity(prop, sendPacket);
+    return prop;
+}
 }

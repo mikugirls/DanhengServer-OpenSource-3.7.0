@@ -47,11 +47,14 @@ public static class Extensions
         };
     }
 
-    public static T RandomElement<T>(this List<T> values)
-    {
-        var index = new Random().Next(values.Count);
-        return values[index];
-    }
+   // 修正后的 RandomElement
+	public static T RandomElement<T>(this List<T> values)
+	{
+    if (values == null || values.Count == 0) return default!;
+    // 使用 Random.Shared 保证线程安全且种子连续，不会因快速调用产生相同结果
+    var index = Random.Shared.Next(values.Count); 
+    return values[index];
+	}
 
     public static ICollection<T> Clone<T>(this ICollection<T> values)
     {
@@ -60,10 +63,11 @@ public static class Extensions
         return list;
     }
 
-    public static int RandomInt(int from, int to)
-    {
-        return new Random().Next(from, to);
-    }
+   // 修正后的 RandomInt (如果有使用到)
+	public static int RandomInt(int from, int to)
+	{
+    return Random.Shared.Next(from, to);
+	}
 
     public static void SafeAdd<T>(this List<T> list, T item)
     {

@@ -20,7 +20,7 @@ public class RogueInstance : BaseRogueInstance
 {
     #region Initialization
 
-    public RogueInstance(RogueAreaConfigExcel areaExcel, RogueAeonExcel aeonExcel, PlayerInstance player) : base(player,
+  public RogueInstance(RogueAreaConfigExcel areaExcel, RogueAeonExcel aeonExcel, PlayerInstance player) : base(player,
         RogueSubModeEnum.CosmosRogue, aeonExcel.RogueBuffType)
     {
         AreaExcel = areaExcel;
@@ -40,10 +40,51 @@ public class RogueInstance : BaseRogueInstance
 
         if (GameData.RogueMapData.TryGetValue(mapId, out var mapRooms))
         {
-            foreach (var item in mapRooms.Values)
+            // --- 1. 动态计算每个 SiteID 的逻辑深度 (Depth) ---
+            var depthMap = new Dictionary<int, int>();
+            var queue = new Queue<(int siteId, int d)>();
+
+            // 寻找起始站点并初始化队列 
+            foreach (var site in mapRooms.Values.Where(x => x.IsStart))
             {
-                var roomInstance = new RogueRoomInstance(item, areaExcel);
+                queue.Enqueue((site.SiteID, 1));
+            }
+
+            // 使用 BFS 遍历地图拓扑结构 
+            while (queue.Count > 0)
+            {
+                var (sId, d) = queue.Dequeue();
                 
+                // 如果已记录深度且现有深度更短，则跳过
+                if (depthMap.ContainsKey(sId) && depthMap[sId] <= d) continue;
+                
+                depthMap[sId] = d;
+
+                if (mapRooms.TryGetValue(sId, out var siteData))
+                {
+                    // 沿着 NextSiteIDList 向下探索 
+                    foreach (var nextId in siteData.NextSiteIDList)
+                    {
+                        queue.Enqueue((nextId, d + 1));
+                    }
+                }
+            }
+
+            // --- 2. 创建房间实例并传入深度与去重集合 ---
+
+            // 【关键修复】：初始化去重集合，确保同一个关卡内精英房 ID 不重复
+            HashSet<int> usedRoomIds = new();
+
+            // 为了让去重更准确，建议按深度排序后再生成房间（可选，但推荐）
+            var sortedSites = mapRooms.Values.OrderBy(x => depthMap.GetValueOrDefault(x.SiteID, 1)).ToList();
+
+            foreach (var item in sortedSites)
+            {
+                // 获取逻辑深度，若在断开的路径上则默认为 1
+                int siteDepth = depthMap.GetValueOrDefault(item.SiteID, 1);
+                
+                // 【修复点】：传入 siteDepth 和 usedRoomIds 两个参数
+                var roomInstance = new RogueRoomInstance(item, areaExcel, siteDepth, usedRoomIds);
 
                 RogueRooms.Add(item.SiteID, roomInstance);
                 if (item.IsStart) StartSiteId = item.SiteID;
@@ -58,7 +99,6 @@ public class RogueInstance : BaseRogueInstance
         action.SetBonus();
         RogueActions.Add(CurActionQueuePosition, action);
     }
-
     #endregion
 
     #region Properties
@@ -256,7 +296,7 @@ public class RogueInstance : BaseRogueInstance
     }
 
     // 兜底返回
-    return 200; 
+    return 301; 
 }
 
     public override async ValueTask UpdateMenu(int position = 0)
@@ -280,7 +320,7 @@ public class RogueInstance : BaseRogueInstance
 
         CurRoom = nextRoom;
         CurRoom.Status = RogueRoomStatus.Play;
-
+		System.Console.WriteLine($"[Rogue调试] 站点:{siteId} | 房间ID:{CurRoom.RoomId} | 类型:{CurRoom.Excel.RogueRoomType} | 物理Group:{CurRoom.Excel.GroupID}");
         await Player.EnterScene(CurRoom.Excel.MapEntrance, 0, false);
 
         var anchor = Player.SceneInstance!.FloorInfo?.GetAnchorInfo(CurRoom.Excel.GroupID, 1);
@@ -293,7 +333,7 @@ public class RogueInstance : BaseRogueInstance
         await Player.SendPacket(new PacketSyncRogueMapRoomScNotify(CurRoom, CurRoom.MapId));
         EventManager?.OnNextRoom();
         foreach (var miracle in RogueMiracles.Values) miracle.OnEnterNextRoom();
-
+		
         return CurRoom;
     }
 
