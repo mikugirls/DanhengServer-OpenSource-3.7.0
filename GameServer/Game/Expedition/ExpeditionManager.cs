@@ -11,17 +11,12 @@ namespace EggLink.DanhengServer.GameServer.Game.Expedition;
 
 public class ExpeditionManager(PlayerInstance player) : BasePlayerManager(player)
 {
-    // 定义 Data 属性
-    public ExpeditionData Data { get; private set; }
+    // 直接引用 PlayerInstance 中初始化好的 Data
+    public ExpeditionData Data => Player.ExpeditionData!;
 
-    // 构造函数
     public ExpeditionManager(PlayerInstance player) : base(player)
     {
-        // 1. 初始化并持久化玩家派遣数据
-        Data = DatabaseHelper.Instance!.GetInstanceOrCreateNew<ExpeditionData>(player.Uid);
-        
-        // 2. 如果有需要初始化的局部配置或实例，可以在此处添加
-        // EnsureLocalConfigLoaded(); 
+        // 构造函数现在可以保持简洁，因为 PlayerInstance 已经处理了加载
     }
 
     #region Main Actions
@@ -83,7 +78,7 @@ public class ExpeditionManager(PlayerInstance player) : BasePlayerManager(player
         await Player.SendPacket(rsp);
 
         // 8. 触发任务系统逻辑：处理特定的派遣任务目标 
-        await Player.MissionManager!.HandleFinishType(Enums.Mission.MissionFinishTypeEnum.FinishMission, (int)info.Id);
+       // await Player.MissionManager!.HandleFinishType(Enums.Mission.MissionFinishTypeEnum.FinishMission, (int)info.Id);
     }
 
     #endregion
@@ -100,7 +95,7 @@ public class ExpeditionManager(PlayerInstance player) : BasePlayerManager(player
         {
             // 如果没有解锁任务或任务已完成，则计入槽位 
             if (team.UnlockMission == 0 || 
-                Player.MissionManager!.GetMainMissionStatus(team.UnlockMission) == Enums.Mission.MissionPhaseEnum.Finish)
+                //Player.MissionManager!.GetMainMissionStatus(team.UnlockMission) == Enums.Mission.MissionPhaseEnum.Finish)
             {
                 count++;
             }
