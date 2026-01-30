@@ -64,18 +64,18 @@ public class ExpeditionManager(PlayerInstance player) : BasePlayerManager(player
         Data.ExpeditionList.Add(newExpedition);
 
         // 7. 发送成功回执 (AcceptExpeditionScRsp: 2538)
-        var rsp = new AcceptExpeditionScRsp
-        {
-            Retcode = 0,
-            AcceptExpedition = new ExpeditionInfo
-            {
-                Id = info.Id,
-                TotalDuration = info.TotalDuration,
-                StartExpeditionTime = info.StartExpeditionTime
-            }
-        };
-        rsp.AcceptExpedition.AvatarIdList.AddRange(info.AvatarIdList);
-        await Player.SendPacket(rsp);
+        //var rsp = new AcceptExpeditionScRsp
+       // {
+       //     Retcode = 0,
+        //    AcceptExpedition = new ExpeditionInfo
+        //    {
+         //       Id = info.Id,
+         //       TotalDuration = info.TotalDuration,
+         //       StartExpeditionTime = info.StartExpeditionTime
+          //  }
+       // };
+        //rsp.AcceptExpedition.AvatarIdList.AddRange(info.AvatarIdList);
+       // await Player.SendPacket(rsp);
 
         // 8. 触发任务系统逻辑：处理特定的派遣任务目标 
        // await Player.MissionManager!.HandleFinishType(Enums.Mission.MissionFinishTypeEnum.FinishMission, (int)info.Id);
