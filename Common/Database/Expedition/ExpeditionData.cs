@@ -38,13 +38,24 @@ public class ExpeditionData : BaseDatabaseDataHelper
     }
 }
 
+
 public class ExpeditionInfoInstance
 {
     public uint Id { get; set; }
-
     public uint TotalDuration { get; set; }
-
     public long StartExpeditionTime { get; set; }
-
     public List<uint> AvatarIdList { get; set; } = [];
+
+    // --- 核心修复：添加 ToProto 方法 ---
+    public ExpeditionInfo ToProto()
+    {
+        var proto = new ExpeditionInfo
+        {
+            Id = this.Id,
+            TotalDuration = this.TotalDuration,
+            StartExpeditionTime = this.StartExpeditionTime
+        };
+        proto.AvatarIdList.AddRange(this.AvatarIdList);
+        return proto;
+    }
 }
