@@ -11,8 +11,18 @@ namespace EggLink.DanhengServer.GameServer.Game.Expedition;
 
 public class ExpeditionManager(PlayerInstance player) : BasePlayerManager(player)
 {
-    // 初始化并持久化玩家派遣数据 
-    public ExpeditionData Data { get; set; } = DatabaseHelper.Instance!.GetInstanceOrCreateNew<ExpeditionData>(player.Uid);
+    // 定义 Data 属性
+    public ExpeditionData Data { get; private set; }
+
+    // 构造函数
+    public ExpeditionManager(PlayerInstance player) : base(player)
+    {
+        // 1. 初始化并持久化玩家派遣数据
+        Data = DatabaseHelper.Instance!.GetInstanceOrCreateNew<ExpeditionData>(player.Uid);
+        
+        // 2. 如果有需要初始化的局部配置或实例，可以在此处添加
+        // EnsureLocalConfigLoaded(); 
+    }
 
     #region Main Actions
 
