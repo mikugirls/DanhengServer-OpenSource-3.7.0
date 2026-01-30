@@ -27,35 +27,76 @@ public class ExpeditionManager : BasePlayerManager
     /// <summary>
     /// 处理开始派遣请求 (CmdId: 2521)
     /// </summary>
+   /// <summary>
+/// 处理开始派遣请求 (CmdId: 2521)
+/// </summary>
+/// <summary>
+    /// 处理开始派遣请求 (CmdId: 2521)
+    /// </summary>
     public async ValueTask AcceptExpedition(AcceptExpeditionCsReq req)
     {
         var info = req.AcceptExpedition;
-        if (info == null) return;
+        if (info == null) 
+        {
+            Console.WriteLine("[派遣开始] 错误：收到空请求体 (AcceptExpedition == null)");
+            return;
+        }
+
+        Console.WriteLine($"[派遣开始] 收到请求 - 点位ID: {info.Id}, 请求时长: {info.TotalDuration}s (约为 {info.TotalDuration / 3600.0:F1}h)");
 
         // 1. 获取派遣静态配置 
         if (!GameData.ExpeditionDataData.TryGetValue((int)info.Id, out var config))
+        {
+            Console.WriteLine($"[派遣开始] 失败：配置表中找不到点位 ID {(int)info.Id}");
             return;
+        }
 
         // 2. 校验队伍上限
         int unlockedSlots = GetUnlockedExpeditionSlots();
         if (Data.ExpeditionList.Count >= unlockedSlots)
+        {
+            Console.WriteLine($"[派遣开始] 拦截：槽位已满 ({Data.ExpeditionList.Count}/{unlockedSlots})");
             return;
+        }
 
         // 3. 校验解锁任务条件 
         if (config.UnlockMission > 0 && 
             Player.MissionManager!.GetMainMissionStatus(config.UnlockMission) != Enums.Mission.MissionPhaseEnum.Finish)
+        {
+            Console.WriteLine($"[派遣开始] 拦截：前置任务 {config.UnlockMission} 未完成");
             return;
+        }
 
         // 4. 校验人数限制
         if (info.AvatarIdList.Count < config.AvatarNumMin || info.AvatarIdList.Count > config.AvatarNumMax)
+        {
+            Console.WriteLine($"[派遣开始] 拦截：人数不符。需 {config.AvatarNumMin}-{config.AvatarNumMax} 人，实际发送 {info.AvatarIdList.Count} 人");
             return;
+        }
 
         // 5. 校验派遣时长与奖励配置
+        // 关键点：检查时长匹配
         var rewardConfig = GameData.ExpeditionIdToRewards[(int)info.Id]
-            .FirstOrDefault(x => (uint)(x.Duration * 3600) == info.TotalDuration);
-        if (rewardConfig == null) return;
+		.FirstOrDefault(x => (uint)x.Duration == info.TotalDuration);
+        
+        if (rewardConfig == null) 
+		{
+		var availableDurations = string.Join(", ", GameData.ExpeditionIdToRewards[(int)info.Id].Select(x => x.Duration + "h"));
+		Console.WriteLine($"[派遣开始] 拦截：时长匹配失败。客户端传值 {info.TotalDuration}，配置表支持: {availableDurations}");
+		return;
+		}
 
-        // 6. 保存至数据库 
+        // 6. 校验角色是否被重复占用
+        foreach (var avatarId in info.AvatarIdList)
+        {
+            if (Data.ExpeditionList.Any(ex => ex.AvatarIdList.Contains(avatarId)))
+            {
+                Console.WriteLine($"[派遣开始] 拦截：角色 {avatarId} 已在其他派遣任务中");
+                return;
+            }
+        }
+
+        // 7. 保存至数据库 
         var newExpedition = new ExpeditionInfoInstance
         {
             Id = info.Id,
@@ -66,11 +107,12 @@ public class ExpeditionManager : BasePlayerManager
         
         Data.ExpeditionList.Add(newExpedition);
         DatabaseHelper.ToSaveUidList.SafeAdd(Player.Uid);
+        Console.WriteLine($"[派遣开始] 成功！点位 {info.Id} 已存入，列表总数: {Data.ExpeditionList.Count}");
 
-        // 7. 发送回执
+        // 8. 发送回执
         await Player.SendPacket(new PacketAcceptExpeditionScRsp(newExpedition));
 
-        // 8. 全量同步 (刷新 UI 占用状态)
+        // 9. 全量同步
         await SyncExpeditionData();
     }
 
@@ -92,7 +134,14 @@ public class ExpeditionManager : BasePlayerManager
             return;
 
         var rewardConfig = GameData.ExpeditionIdToRewards[(int)instance.Id]
-            .FirstOrDefault(x => (uint)(x.Duration * 3600) == instance.TotalDuration);
+		.FirstOrDefault(x => (uint)x.Duration == instance.TotalDuration);
+
+		// 2. 时间校验 (注意：因为 TotalDuration 现在是小时，计算结束时间要乘以 3600)
+		if (Extensions.GetUnixSec() < (instance.StartExpeditionTime + (instance.TotalDuration * 3600)))
+		{
+		Console.WriteLine($"[派遣领奖] 时间未到！需等待 {instance.TotalDuration} 小时");
+		return;
+		}
         
         if (rewardConfig != null)
         {
