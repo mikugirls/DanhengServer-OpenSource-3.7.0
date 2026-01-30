@@ -115,12 +115,12 @@ public async ValueTask TakeExpeditionReward(uint expeditionId)
     if (rewardConfig != null)
     {
         // --- 核心修复：修正为 RewardID ---
-        [cite_start]// 使用 InventoryManager 的 HandleReward 统一处理入库、同步和弹窗通知 [cite: 110, 112]
+        // 使用 InventoryManager 的 HandleReward 统一处理入库、同步和弹窗通知 [cite: 110, 112]
         var rewardItems = await Player.InventoryManager!.HandleReward(rewardConfig.RewardID, notify: true, sync: true);
 
         // 4. 构造回执协议的奖励列表
         var rewardProto = new ItemList();
-        [cite_start]// 将 ItemData 转换为协议使用的 Item 格式 [cite: 115]
+        // 将 ItemData 转换为协议使用的 Item 格式 [cite: 115]
         rewardProto.ItemList_.AddRange(rewardItems.Select(x => x.ToProto()));
         
         // 5. 发送领奖成功回执包
