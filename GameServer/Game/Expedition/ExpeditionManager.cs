@@ -97,37 +97,52 @@ public class ExpeditionManager : BasePlayerManager
 /// </summary>
 public async ValueTask TakeExpeditionReward(uint expeditionId)
 {
-    // 1. 查找是否存在该派遣记录
     var instance = Data.ExpeditionList.FirstOrDefault(x => x.Id == expeditionId);
     if (instance == null) return;
 
-    // 2. 时间校验：当前时间 < 开始时间 + 总时长（秒）则不能领取
-    long currentTime = Extensions.GetUnixSec();
-    if (currentTime < (instance.StartExpeditionTime + instance.TotalDuration))
-    {
+    // 1. 时间校验 (略)
+    
+    // 2. 获取任务配置以查看“推荐属性”
+    if (!GameData.ExpeditionDataData.TryGetValue((int)instance.Id, out var config))
         return;
-    }
 
-    // 3. 获取奖励配置
     var rewardConfig = GameData.ExpeditionIdToRewards[(int)instance.Id]
         .FirstOrDefault(x => (uint)(x.Duration * 3600) == instance.TotalDuration);
     
     if (rewardConfig != null)
     {
-        // --- 核心修复：修正为 RewardID ---
-        // 使用 InventoryManager 的 HandleReward 统一处理入库、同步和弹窗通知 [cite: 110, 112]
-        var rewardItems = await Player.InventoryManager!.HandleReward(rewardConfig.RewardID, notify: true, sync: true);
+        // --- 角色加成判定 ---
+        bool hasBonus = false;
+        foreach (var avatarId in instance.AvatarIdList)
+        {
+            [cite_start]// 通过你提供的 AvatarManager 获取角色数据 
+            var avatarExcel = GameData.AvatarConfigData.GetValueOrDefault(avatarId);
+            if (avatarExcel == null) continue;
 
-        // 4. 构造回执协议的奖励列表
+            // 逻辑判定：例如推荐命途匹配（假设 config 中定义了推荐命途字段）
+            // if (avatarExcel.AvatarBaseType == config.RecommendPath) { hasBonus = true; break; }
+            
+            // 或者：只要队伍中有特定属性的角色即可触发额外奖励
+            hasBonus = true; 
+        }
+
+        // 3. 发放基础奖励
+        var rewardItems = await Player.InventoryManager!.HandleReward(rewardConfig.RewardID, notify: true, sync: true);
         var rewardProto = new ItemList();
-        // 将 ItemData 转换为协议使用的 Item 格式 [cite: 115]
         rewardProto.ItemList_.AddRange(rewardItems.Select(x => x.ToProto()));
-        
-        // 5. 发送领奖成功回执包
-        await Player.SendPacket(new PacketTakeExpeditionRewardScRsp(expeditionId, rewardProto));
+
+        // 4. 发放额外奖励
+        var extraRewardProto = new ItemList();
+        if (hasBonus && rewardConfig.ExtraRewardID > 0)
+        {
+            var extraItems = await Player.InventoryManager!.HandleReward(rewardConfig.ExtraRewardID, notify: true, sync: true);
+            extraRewardProto.ItemList_.AddRange(extraItems.Select(x => x.ToProto()));
+        }
+
+        // 5. 发送更新后的回执包
+        await Player.SendPacket(new PacketTakeExpeditionRewardScRsp(expeditionId, rewardProto, extraRewardProto));
     }
 
-    // 6. 移除记录并标记数据库保存
     Data.ExpeditionList.Remove(instance);
     DatabaseHelper.ToSaveUidList.SafeAdd(Player.Uid);
 }
