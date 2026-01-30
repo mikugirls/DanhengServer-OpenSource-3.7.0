@@ -182,5 +182,32 @@ public async ValueTask TakeExpeditionReward(uint expeditionId)
 
         await Player.SendPacket(new PacketCancelExpeditionScRsp(expeditionId));
     }
+	public async ValueTask SyncExpeditionData()
+{
+    // 构造通知包
+    var notify = new ExpeditionDataChangeScNotify
+    {
+        // 1. 获取当前所有正在进行的派遣
+        ExpeditionList = { Data.ExpeditionList.Select(x => x.ToProto()) },
+        
+        // 2. 计算当前解锁的槽位总数 (2, 3, 4...)
+        TeamCount = (uint)GetUnlockedExpeditionSlots(),
+        
+        // 3. 计算已解锁的所有点位 ID (遍历配置表，检查任务是否完成)
+        UnlockedExpeditionIdList = { GetUnlockedExpeditionIds() }
+    };
+
+    await Player.SendPacket(new PacketExpeditionDataChangeScNotify(notify));
+}
+
+// 辅助方法：获取当前玩家解锁的所有派遣点 ID
+private List<uint> GetUnlockedExpeditionIds()
+{
+    return GameData.ExpeditionDataData.Values
+        .Where(config => config.UnlockMission == 0 || 
+               Player.MissionManager!.GetMainMissionStatus(config.UnlockMission) == Enums.Mission.MissionPhaseEnum.Finish)
+        .Select(config => (uint)config.ExpeditionID)
+        .ToList();
+}
     #endregion
 }
