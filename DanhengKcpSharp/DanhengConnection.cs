@@ -159,26 +159,29 @@ public class DanhengConnection
         }
 
         if (packet.CmdId == CmdIds.SetClientPausedScRsp)
-        {
-            BasePacket lData;
-            switch (ConfigManager.Config.ServerOption.Language)
-            {
-                case "CHS":
-                    lData = new HandshakePacket(Convert.FromBase64String(
-                        "bG9jYWwgZnVuY3Rpb24gbW9kaWZ5X3RleHRzKCkKICAgIGxvY2FsIHVpZCA9IENTLlVuaXR5RW5naW5lLkdhbWVPYmplY3QuRmluZCgiVmVyc2lvblRleHQiKTpHZXRDb21wb25lbnQoIlRleHQiKQogICAgaWYgbm90IHN0cmluZy5tYXRjaCh1aWQudGV4dCwgIkRhbmhlbmdTZXJ2ZXIiKSB0aGVuCiAgICAgICAgdWlkLnRleHQgPSAiRGFuaGVuZ1NlcnZlcuS4uumXrea6kOWFjei0ueacjeWKoeerr1xu5q2k5pyN5Yqh56uv5LuF55So5L2c5a2m5Lmg5Lqk5rWB77yM6K+35pSv5oyB5q2j54mI5ri45oiPICIgLi4gdWlkLnRleHQKICAgICAgICB1aWQuZm9udFNpemUgPSA3Ni4wCiAgICBlbmQKCiAgICBsb2NhbCBiZXRhID0gQ1MuVW5pdHlFbmdpbmUuR2FtZU9iamVjdC5GaW5kKCJVSVJvb3QvQWJvdmVEaWFsb2cvQmV0YUhpbnREaWFsb2coQ2xvbmUpIik6R2V0Q29tcG9uZW50KCJUZXh0IikKZW5kCgpsb2NhbCBmdW5jdGlvbiBvbl9lcnJvcihlcnJvcikKICAgIENTLlVuaXR5RW5naW5lLkFwcGxpY2F0aW9uLnRhcmdldEZyYW1lUmF0ZSA9IDEwMAogICAgQ1MuVW5pdHlFbmdpbmUuUXVhbGl0eVNldHRpbmdzLnZTeW5jQ291bnQgPSAwCiAgICBsb2NhbCBmaWxlcyA9IGlvLm9wZW4oIi4vZXJyb3IudHh0IiwgInciKQogICAgZmlsZXM6d3JpdGUoZXJyb3IpCiAgICBmaWxlczpjbG9zZSgpCmVuZAoKbG9jYWwgc3RhdHVzLCBlcnIgPSBwY2FsbChtb2RpZnlfdGV4dHMpCmlmIG5vdCBzdGF0dXMgdGhlbgogICAgb25fZXJyb3IoZXJyKQplbmQ="));
-                    break;
-                case "CHT":
-                    lData = new HandshakePacket(Convert.FromBase64String(
-                        "bG9jYWwgZnVuY3Rpb24gbW9kaWZ5X3RleHRzKCkKICAgIGxvY2FsIHVpZCA9IENTLlVuaXR5RW5naW5lLkdhbWVPYmplY3QuRmluZCgiVmVyc2lvblRleHQiKTpHZXRDb21wb25lbnQoIlRleHQiKQogICAgaWYgbm90IHN0cmluZy5tYXRjaCh1aWQudGV4dCwgIkRhbmhlbmdTZXJ2ZXIiKSB0aGVuCiAgICAgICAgdWlkLnRleHQgPSAiRGFuaGVuZ1NlcnZlcueCuumWiea6kOWFjeiyu+S8uuacjeWZqOi7n+mrlFxu5q2k5Ly65pyN5Zmo6Luf6auU5YOF55So5L2c5a2457+S5Lqk5rWB77yM6KuL5pSv5oyB5q2j54mI6YGK5oiyICAiIC4uIHVpZC50ZXh0CiAgICAgICAgdWlkLmZvbnRTaXplID0gNzYuMAogICAgZW5kCgogICAgbG9jYWwgYmV0YSA9IENTLlVuaXR5RW5naW5lLkdhbWVPYmplY3QuRmluZCgiVUlSb290L0Fib3ZlRGlhbG9nL0JldGFIaW50RGlhbG9nKENsb25lKSIpOkdldENvbXBvbmVudCgiVGV4dCIpCmVuZAoKbG9jYWwgZnVuY3Rpb24gb25fZXJyb3IoZXJyb3IpCiAgICBDUy5Vbml0eUVuZ2luZS5BcHBsaWNhdGlvbi50YXJnZXRGcmFtZVJhdGUgPSAxMDAKICAgIENTLlVuaXR5RW5naW5lLlF1YWxpdHlTZXR0aW5ncy52U3luY0NvdW50ID0gMAogICAgbG9jYWwgZmlsZXMgPSBpby5vcGVuKCIuL2Vycm9yLnR4dCIsICJ3IikKICAgIGZpbGVzOndyaXRlKGVycm9yKQogICAgZmlsZXM6Y2xvc2UoKQplbmQKCmxvY2FsIHN0YXR1cywgZXJyID0gcGNhbGwobW9kaWZ5X3RleHRzKQppZiBub3Qgc3RhdHVzIHRoZW4KICAgIG9uX2Vycm9yKGVycikKZW5k"));
-                    break;
-                default:
-                    lData = new HandshakePacket(Convert.FromBase64String(
-                        "bG9jYWwgZnVuY3Rpb24gbW9kaWZ5X3RleHRzKCkKICAgIGxvY2FsIHVpZCA9IENTLlVuaXR5RW5naW5lLkdhbWVPYmplY3QuRmluZCgiVmVyc2lvblRleHQiKTpHZXRDb21wb25lbnQoIlRleHQiKQogICAgaWYgbm90IHN0cmluZy5tYXRjaCh1aWQudGV4dCwgIkRhbmhlbmdTZXJ2ZXIiKSB0aGVuCiAgICAgICAgdWlkLnRleHQgPSAiRGFuaGVuZ1NlcnZlciBpcyBhIGZyZWUgY2xvc2VkLXNvdXJjZSBzb2Z0d2FyZVxuRWR1Y2F0aW9uYWwgcHVycG9zZSBvbmx5LCBwbGVhc2Ugc3VwcG9ydCBnZW51aW5lIGdhbWUgIiAuLiB1aWQudGV4dAogICAgICAgIHVpZC5mb250U2l6ZSA9IDc2LjAKICAgIGVuZAoKICAgIGxvY2FsIGJldGEgPSBDUy5Vbml0eUVuZ2luZS5HYW1lT2JqZWN0LkZpbmQoIlVJUm9vdC9BYm92ZURpYWxvZy9CZXRhSGludERpYWxvZyhDbG9uZSkiKTpHZXRDb21wb25lbnQoIlRleHQiKQplbmQKCmxvY2FsIGZ1bmN0aW9uIG9uX2Vycm9yKGVycm9yKQogICAgQ1MuVW5pdHlFbmdpbmUuQXBwbGljYXRpb24udGFyZ2V0RnJhbWVSYXRlID0gMTAwCiAgICBDUy5Vbml0eUVuZ2luZS5RdWFsaXR5U2V0dGluZ3MudlN5bmNDb3VudCA9IDAKICAgIGxvY2FsIGZpbGVzID0gaW8ub3BlbigiLi9lcnJvci50eHQiLCAidyIpCiAgICBmaWxlczp3cml0ZShlcnJvcikKICAgIGZpbGVzOmNsb3NlKCkKZW5kCgpsb2NhbCBzdGF0dXMsIGVyciA9IHBjYWxsKG1vZGlmeV90ZXh0cykKaWYgbm90IHN0YXR1cyB0aGVuCiAgICBvbl9lcnJvcihlcnIpCmVuZA=="));
-                    break;
-            }
+	{
+    BasePacket lData;
+    switch (ConfigManager.Config.ServerOption.Language)
+    {
+        case "CHS":
+            // 修正：Lua脚本现在仅保留原始UID显示，不再追加 DanhengServer 文字
+            lData = new HandshakePacket(Convert.FromBase64String(
+                "bG9jYWwgZnVuY3Rpb24gbW9kaWZ5X3RleHRzKCkKICAgIGxvY2FsIHVpZCA9IENTLlVuaXR5RW5naW5lLkdhbWVPYmplY3QuRmluZCgiVmVyc2lvblRleHQiKTpHZXRDb21wb25lbnQoIlRleHQiKQogICAgaWYgdWlkIHRoZW4KICAgICAgICAtLSBCeXBhc3MgbW9kaWZpY2F0aW9uLCBrZWVwIG9yaWdpbmFsIHRleHQgKHdoaWNoIGlzIHRoZSBVSUQpCiAgICBlbmQKZW5kCgpsb2NhbCBzdGF0dXMsIGVyciA9IHBjYWxsKG1vZGlmeV90ZXh0cykKaWYgbm90IHN0YXR1cyB0aGVuCiAgICBsb2NhbCBmaWxlcyA9IGlvLm9wZW4oIi4vZXJyb3IudHh0IiwgInciKQogICAgZmlsZXM6d3JpdGUoZXJyKQogICAgZmlsZXM6Y2xvc2UoKQplbmQ="));
+            break;
+        case "CHT":
+            // 繁体同理修正
+            lData = new HandshakePacket(Convert.FromBase64String(
+                "bG9jYWwgZnVuY3Rpb24gbW9kaWZ5X3RleHRzKCkKICAgIGxvY2FsIHVpZCA9IENTLlVuaXR5RW5naW5lLkdhbWVPYmplY3QuRmluZCgiVmVyc2lvblRleHQiKTpHZXRDb21wb25lbnQoIlRleHQiKQogICAgaWYgdWlkIHRoZW4KICAgICAgICAtLSBrZWVwIG9yaWdpbmFsCiAgICBlbmQKZW5kCgpsb2NhbCBzdGF0dXMsIGVyciA9IHBjYWxsKG1vZGlmeV90ZXh0cykKaWYgbm90IHN0YXR1cyB0aGVuCiAgICBsb2NhbCBmaWxlcyA9IGlvLm9wZW4oIi4vZXJyb3IudHh0IiwgInciKQogICAgZmlsZXM6d3JpdGUoZXJyKQogICAgZmlsZXM6Y2xvc2UoKQplbmQ="));
+            break;
+        default:
+            // 英文同理修正
+            lData = new HandshakePacket(Convert.FromBase64String(
+                "bG9jYWwgZnVuY3Rpb24gbW9kaWZ5X3RleHRzKCkKICAgIGxvY2FsIHVpZCA9IENTLlVuaXR5RW5naW5lLkdhbWVPYmplY3QuRmluZCgiVmVyc2lvblRleHQiKTpHZXRDb21wb25lbnQoIlRleHQiKQogICAgaWYgdWlkIHRoZW4KICAgICAgICAtLSBrZWVwIG9yaWdpbmFsCiAgICBlbmQKZW5kCgpsb2NhbCBzdGF0dXMsIGVyciA9IHBjYWxsKG1vZGlmeV90ZXh0cykKaWYgbm90IHN0YXR1cyB0aGVuCiAgICBsb2NhbCBmaWxlcyA9IGlvLm9wZW4oIi4vZXJyb3IudHh0IiwgInciKQogICAgZmlsZXM6d3JpdGUoZXJyKQogICAgZmlsZXM6Y2xvc2UoKQplbmQ="));
+            break;
+		}
 
-            await SendPacket(lData.BuildPacket());
-        }
+    await SendPacket(lData.BuildPacket());
+	}
 
         if (packet.CmdId == CmdIds.GetTutorialScRsp)
         {
