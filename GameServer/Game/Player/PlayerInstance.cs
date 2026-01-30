@@ -356,13 +356,17 @@ public partial class PlayerInstance(PlayerData data)
 		// 登录时同步派遣数据
         if (ExpeditionManager != null)
         {
-            await SendPacket(new PacketGetExpeditionDataScRsp(this)); // 
+            await ExpeditionManager.Initialize(); 
         }
 		if (ActivityManager != null)
     {
        // 使用 Packet 类进行装箱
          await SendPacket(new PacketGetLoginActivityScRsp(ActivityManager.GetLoginInfo()));
     }
+	if (ExpeditionManager != null)
+·{
+    await ExpeditionManager.SyncExpeditionData(); 
+·}	
         InvokeOnPlayerLogin(this);
     }
 
