@@ -98,63 +98,76 @@ public class ExpeditionManager : BasePlayerManager
 /// <summary>
     /// 领取派遣奖励 (CmdId: 2552) - 含官服角色加成逻辑
     /// </summary>
-    public async ValueTask TakeExpeditionReward(uint expeditionId)
+    /// <summary>
+/// 领取派遣奖励 (CmdId: 2552) - 完整双重加成版
+/// </summary>
+public async ValueTask TakeExpeditionReward(uint expeditionId)
+{
+    // 1. 查找派遣实例
+    var instance = Data.ExpeditionList.FirstOrDefault(x => x.Id == expeditionId);
+    if (instance == null) return;
+
+    // 2. 时间校验 (当前时间 >= 开始时间 + 总时长)
+    if (Extensions.GetUnixSec() < (instance.StartExpeditionTime + instance.TotalDuration))
     {
-        // 1. 查找派遣实例
-        var instance = Data.ExpeditionList.FirstOrDefault(x => x.Id == expeditionId);
-        if (instance == null) return;
+        return;
+    }
 
-        // 2. 时间校验 (当前时间 >= 开始时间 + 总时长)
-        if (Extensions.GetUnixSec() < (instance.StartExpeditionTime + instance.TotalDuration))
-            return;
+    // 3. 获取点位配置(用于判定加成列表)与奖励配置
+    if (!GameData.ExpeditionDataData.TryGetValue((int)instance.Id, out var config))
+        return;
 
-        // 3. 获取点位配置(用于判定加成命途)与奖励配置
-        if (!GameData.ExpeditionDataData.TryGetValue((int)instance.Id, out var config))
-            return;
-
-        var rewardConfig = GameData.ExpeditionIdToRewards[(int)instance.Id]
-            .FirstOrDefault(x => (uint)(x.Duration * 3600) == instance.TotalDuration);
-        
-        if (rewardConfig != null)
+    var rewardConfig = GameData.ExpeditionIdToRewards[(int)instance.Id]
+        .FirstOrDefault(x => (uint)(x.Duration * 3600) == instance.TotalDuration);
+    
+    if (rewardConfig != null)
+    {
+        // --- 核心加成判定：命途 + 属性 ---
+        bool hasBonus = false;
+        foreach (var avatarId in instance.AvatarIdList)
         {
-            // --- 官服逻辑：角色加成判定 ---
-            bool hasPathBonus = false;
-            foreach (var avatarId in instance.AvatarIdList)
+            if (GameData.AvatarConfigData.TryGetValue((int)avatarId, out var avatarExcel))
             {
-                // 获取角色静态配置 (需要确保 Data 映射正确)
-                if (GameData.AvatarConfigData.TryGetValue((int)avatarId, out var avatarExcel))
+                // A. 判定命途加成 (如 "Destruction", "Knight")
+                if (config.BonusBaseTypeList.Count > 0 && 
+                    config.BonusBaseTypeList.Contains(avatarExcel.AvatarBaseType.ToString()))
                 {
-                    // 核心判定：角色的命途是否与派遣点要求的推荐命途一致
-                    // 注意：这里的 AvatarBaseType 是命途枚举，config.AvatarBaseType 是派遣点配置的推荐命途
-                    if (avatarExcel.AvatarBaseType == config.AvatarBaseType) 
-                    {
-                        hasPathBonus = true;
-                        break; 
-                    }
+                    hasBonus = true;
+                    break; 
+                }
+
+                // B. 判定属性加成 (如 "Fire", "Ice")
+                // 注意：这里假设你的 AvatarConfigExcel 中属性字段名为 DamageType
+                if (config.BonusDamageTypeList.Count > 0 && 
+                    config.BonusDamageTypeList.Contains(avatarExcel.DamageType.ToString()))
+                {
+                    hasBonus = true;
+                    break;
                 }
             }
-
-            // 4. 发放基础奖励
-            var rewardItems = await Player.InventoryManager!.HandleReward(rewardConfig.RewardID, notify: true, sync: true);
-            var rewardProto = new ItemList();
-            rewardProto.ItemList_.AddRange(rewardItems.Select(x => x.ToProto()));
-
-            // 5. 发放额外奖励 (如果满足命途加成)
-            var extraRewardProto = new ItemList();
-            if (hasPathBonus && rewardConfig.ExtraRewardID > 0)
-            {
-                var extraItems = await Player.InventoryManager!.HandleReward(rewardConfig.ExtraRewardID, notify: true, sync: true);
-                extraRewardProto.ItemList_.AddRange(extraItems.Select(x => x.ToProto()));
-            }
-
-            // 6. 发送回执包给客户端（包含基础+额外奖励）
-            await Player.SendPacket(new PacketTakeExpeditionRewardScRsp(expeditionId, rewardProto, extraRewardProto));
         }
 
-        // 7. 清理数据
-        Data.ExpeditionList.Remove(instance);
-        DatabaseHelper.ToSaveUidList.SafeAdd(Player.Uid);
+        // 4. 发放基础奖励
+        var rewardItems = await Player.InventoryManager!.HandleReward(rewardConfig.RewardID, notify: true, sync: true);
+        var rewardProto = new ItemList();
+        rewardProto.ItemList_.AddRange(rewardItems.Select(x => x.ToProto()));
+
+        // 5. 发放额外奖励 (满足任意加成条件时)
+        var extraRewardProto = new ItemList();
+        if (hasBonus && rewardConfig.ExtraRewardID > 0)
+        {
+            var extraItems = await Player.InventoryManager!.HandleReward(rewardConfig.ExtraRewardID, notify: true, sync: true);
+            extraRewardProto.ItemList_.AddRange(extraItems.Select(x => x.ToProto()));
+        }
+
+        // 6. 发送回执包 (确保 Packet 类构造函数接收 3 个参数)
+        await Player.SendPacket(new PacketTakeExpeditionRewardScRsp(expeditionId, rewardProto, extraRewardProto));
     }
+
+    // 7. 清理数据并持久化
+    Data.ExpeditionList.Remove(instance);
+    DatabaseHelper.ToSaveUidList.SafeAdd(Player.Uid);
+}
 
 	/// <summary>
     /// 中途取消
