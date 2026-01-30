@@ -131,5 +131,18 @@ public async ValueTask TakeExpeditionReward(uint expeditionId)
     Data.ExpeditionList.Remove(instance);
     DatabaseHelper.ToSaveUidList.SafeAdd(Player.Uid);
 }
+	/// <summary>
+    /// 中途取消
+    /// </summary>
+    public async ValueTask CancelExpedition(uint expeditionId)
+    {
+        var instance = Data.ExpeditionList.FirstOrDefault(x => x.Id == expeditionId);
+        if (instance == null) return;
+
+        Data.ExpeditionList.Remove(instance);
+        DatabaseHelper.ToSaveUidList.SafeAdd(Player.Uid);
+
+        await Player.SendPacket(new PacketCancelExpeditionScRsp(expeditionId));
+    }
     #endregion
 }
