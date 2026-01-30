@@ -364,9 +364,9 @@ public partial class PlayerInstance(PlayerData data)
          await SendPacket(new PacketGetLoginActivityScRsp(ActivityManager.GetLoginInfo()));
     }
 	if (ExpeditionManager != null)
-·{
+{
     await ExpeditionManager.SyncExpeditionData(); 
-·}	
+}	
         InvokeOnPlayerLogin(this);
     }
 
