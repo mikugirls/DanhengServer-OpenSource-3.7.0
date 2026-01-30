@@ -313,7 +313,24 @@ public static class GameData
     public static Dictionary<int, HeartDialDialogueExcel> HeartDialDialogueData { get; private set; } = [];
 
     #endregion
+	#region Expedition
 
+    // 对应 ExpeditionData.json
+    public static Dictionary<int, ExpeditionDataExcel> ExpeditionDataData { get; private set; } = [];
+    
+    // 对应 ExpeditionReward.json
+    public static Dictionary<int, ExpeditionRewardExcel> ExpeditionRewardData { get; private set; } = [];
+    
+    // 对应 ExpeditionTeam.json
+    public static Dictionary<int, ExpeditionTeamExcel> ExpeditionTeamData { get; private set; } = [];
+    
+    // 对应 ExpeditionGroup.json
+    public static Dictionary<int, ExpeditionGroupExcel> ExpeditionGroupData { get; private set; } = [];
+    
+    // 辅助字典：用于根据 ExpeditionID 快速获取其下所有的时长/奖励配置
+    public static Dictionary<int, List<ExpeditionRewardExcel>> ExpeditionIdToRewards { get; private set; } = [];
+
+    #endregion
     #region Item Exchange
 
     public static Dictionary<int, ShopConfigExcel> ShopConfigData { get; private set; } = [];
