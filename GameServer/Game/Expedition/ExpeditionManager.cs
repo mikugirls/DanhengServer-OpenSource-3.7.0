@@ -105,31 +105,30 @@ public async ValueTask TakeExpeditionReward(uint expeditionId)
     long currentTime = Extensions.GetUnixSec();
     if (currentTime < (instance.StartExpeditionTime + instance.TotalDuration))
     {
-        // 还没做完，直接返回（或者发个错误码回执）
         return;
     }
 
-    // 3. 确定奖励：根据 ID 和时长找到配置
-    // 注意：这里的 Duration 匹配需要根据你之前的逻辑（小时或秒）保持一致
+    // 3. 获取奖励配置 ID
+    // 派遣奖励通常在 Excel 中通过 ExpeditionID 和 Duration 映射到一个 RewardID
     var rewardConfig = GameData.ExpeditionIdToRewards[(int)instance.Id]
         .FirstOrDefault(x => (uint)(x.Duration * 3600) == instance.TotalDuration);
     
     if (rewardConfig != null)
     {
-        // TODO: 调用你的 InventoryManager 给玩家增加道具
-        // 例如：await Player.InventoryManager.AddItems(rewardConfig.ItemId, rewardConfig.ItemCount);
-        // 这里需要根据你项目的具体 Item 处理类来写
+        // 4. 【核心发放】调用 InventoryManager 处理奖励表
+        // notify: true 会弹出右侧获得物品提示，sync: true 会同步背包数字
+        var rewardItems = await Player.InventoryManager!.HandleReward(rewardConfig.RewardId, notify: true, sync: true);
+
+        // 5. 构造并发送回执包
+        var rewardProto = new ItemList();
+        rewardProto.ItemList_.AddRange(rewardItems.Select(x => x.ToProto()));
+        
+        await Player.SendPacket(new PacketTakeExpeditionRewardScRsp(expeditionId, rewardProto));
     }
 
-    // 4. 从列表中移除已领取的任务
+    // 6. 移除记录并存档
     Data.ExpeditionList.Remove(instance);
-
-    // 5. 存盘
     DatabaseHelper.ToSaveUidList.SafeAdd(Player.Uid);
-
-    // 6. 发送领奖成功回执 (TakeExpeditionRewardScRsp)
-    // 待你提供 TakeExpeditionRewardScRsp 的 Proto 后补全 Packet 发送
 }
-
     #endregion
 }
