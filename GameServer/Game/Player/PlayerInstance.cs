@@ -5,6 +5,7 @@ using EggLink.DanhengServer.Database.Friend;
 using EggLink.DanhengServer.Database.Player;
 using EggLink.DanhengServer.Database.Scene;
 using EggLink.DanhengServer.Database.Tutorial;
+using EggLink.DanhengServer.Database.Expedition;
 using EggLink.DanhengServer.Enums.Avatar;
 using EggLink.DanhengServer.GameServer.Game.Activity;
 using EggLink.DanhengServer.GameServer.Game.Avatar;
