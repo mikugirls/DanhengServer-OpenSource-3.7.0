@@ -119,6 +119,7 @@ public partial class PlayerInstance(PlayerData data)
     public PlayerUnlockData? PlayerUnlockData { get; private set; }
     public FriendRecordData? FriendRecordData { get; private set; }
     public SceneData? SceneData { get; private set; }
+	public ExpeditionData? ExpeditionData { get; private set; } // 添加这一行
     public HeartDialData? HeartDialData { get; private set; }
     public TutorialData? TutorialData { get; private set; }
     public TutorialGuideData? TutorialGuideData { get; private set; }
@@ -205,6 +206,8 @@ public partial class PlayerInstance(PlayerData data)
         TrainPartyManager = new TrainPartyManager(this);
         GridFightManager = new GridFightManager(this);
         OfferingManager = new OfferingManager(this);
+		// --- 添加派遣管理器初始化 ---
+        ExpeditionManager = new ExpeditionManager(this); //
 		
         PlayerUnlockData = InitializeDatabase<PlayerUnlockData>();
         SceneData = InitializeDatabase<SceneData>();
@@ -214,8 +217,7 @@ public partial class PlayerInstance(PlayerData data)
         ServerPrefsData = InitializeDatabase<ServerPrefsData>();
         BattleCollegeData = InitializeDatabase<BattleCollegeData>();
         FriendRecordData = InitializeDatabase<FriendRecordData>();
-		// --- 添加派遣管理器初始化 ---
-        ExpeditionManager = new ExpeditionManager(this); //
+		ExpeditionData = InitializeDatabase<ExpeditionData>(); // 添加这一行
         Components.Add(new SwitchHandComponent(this));
         
         if ((int)(ServerPrefsData.Version * 1000) != GameConstants.GameVersionInt)
