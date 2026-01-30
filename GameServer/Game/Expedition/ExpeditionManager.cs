@@ -76,7 +76,7 @@ public class ExpeditionManager : BasePlayerManager
     /// <summary>
     /// 获取当前已解锁的派遣队伍槽位
     /// </summary>
-    private int GetUnlockedExpeditionSlots()
+    public int GetUnlockedExpeditionSlots()
     {
         int count = 0;
         foreach (var team in GameData.ExpeditionTeamData.Values)
