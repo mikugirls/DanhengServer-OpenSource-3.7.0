@@ -42,6 +42,8 @@ using OfferingManager = EggLink.DanhengServer.GameServer.Game.Inventory.Offering
 using EggLink.DanhengServer.GameServer.Server.Packet.Send.Activity;
 using EggLink.DanhengServer.GameServer.Server.Packet.Send.Item;
 using EggLink.DanhengServer.GameServer.Game.Drop;
+using EggLink.DanhengServer.GameServer.Game.Expedition;
+using EggLink.DanhengServer.GameServer.Server.Packet.Send.Expedition;
 namespace EggLink.DanhengServer.GameServer.Game.Player;
 
 public partial class PlayerInstance(PlayerData data)
