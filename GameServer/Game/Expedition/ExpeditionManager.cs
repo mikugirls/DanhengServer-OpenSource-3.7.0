@@ -97,12 +97,15 @@ public class ExpeditionManager : BasePlayerManager
 /// </summary>
 public async ValueTask TakeExpeditionReward(uint expeditionId)
 {
+    // 1. 查找是否存在该派遣记录
     var instance = Data.ExpeditionList.FirstOrDefault(x => x.Id == expeditionId);
     if (instance == null) return;
 
-    // 1. 时间校验 (略)
-    
-    // 2. 获取任务配置以查看“推荐属性”
+    // 2. 时间校验
+    if (Extensions.GetUnixSec() < (instance.StartExpeditionTime + instance.TotalDuration))
+        return;
+
+    // 3. 获取配置
     if (!GameData.ExpeditionDataData.TryGetValue((int)instance.Id, out var config))
         return;
 
@@ -111,27 +114,27 @@ public async ValueTask TakeExpeditionReward(uint expeditionId)
     
     if (rewardConfig != null)
     {
-        // --- 角色加成判定 ---
+        // --- 修复 CS0411: 角色加成判定 ---
         bool hasBonus = false;
         foreach (var avatarId in instance.AvatarIdList)
         {
-            [cite_start]// 通过你提供的 AvatarManager 获取角色数据 
-            var avatarExcel = GameData.AvatarConfigData.GetValueOrDefault(avatarId);
-            if (avatarExcel == null) continue;
-
-            // 逻辑判定：例如推荐命途匹配（假设 config 中定义了推荐命途字段）
-            // if (avatarExcel.AvatarBaseType == config.RecommendPath) { hasBonus = true; break; }
+            // 显式转换类型以修复 GetValueOrDefault 报错
+            GameData.AvatarConfigData.TryGetValue((int)avatarId, out var avatarExcel);
             
-            // 或者：只要队伍中有特定属性的角色即可触发额外奖励
-            hasBonus = true; 
+            if (avatarExcel != null)
+            {
+                // 这里写你的加成逻辑，例如：
+                // if (avatarExcel.AvatarBaseType == config.AvatarBaseType) hasBonus = true;
+                hasBonus = true; // 暂时默认触发加成用于测试
+            }
         }
 
-        // 3. 发放基础奖励
+        // 4. 发放基础奖励
         var rewardItems = await Player.InventoryManager!.HandleReward(rewardConfig.RewardID, notify: true, sync: true);
         var rewardProto = new ItemList();
         rewardProto.ItemList_.AddRange(rewardItems.Select(x => x.ToProto()));
 
-        // 4. 发放额外奖励
+        // 5. 发放额外奖励 (角色加成)
         var extraRewardProto = new ItemList();
         if (hasBonus && rewardConfig.ExtraRewardID > 0)
         {
@@ -139,13 +142,15 @@ public async ValueTask TakeExpeditionReward(uint expeditionId)
             extraRewardProto.ItemList_.AddRange(extraItems.Select(x => x.ToProto()));
         }
 
-        // 5. 发送更新后的回执包
+        // 6. 发送 Packet (确保 Packet 类构造函数已更新为接收 3 个参数)
         await Player.SendPacket(new PacketTakeExpeditionRewardScRsp(expeditionId, rewardProto, extraRewardProto));
     }
 
+    // 7. 移除记录并保存
     Data.ExpeditionList.Remove(instance);
     DatabaseHelper.ToSaveUidList.SafeAdd(Player.Uid);
 }
+
 	/// <summary>
     /// 中途取消
     /// </summary>
