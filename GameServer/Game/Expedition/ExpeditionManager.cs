@@ -5,7 +5,7 @@ using EggLink.DanhengServer.Database;
 using EggLink.DanhengServer.GameServer.Game.Player;
 using EggLink.DanhengServer.Proto;
 using EggLink.DanhengServer.Util;
-
+using EggLink.DanhengServer.GameServer.Server.Packet.Send.Expedition;
 namespace EggLink.DanhengServer.GameServer.Game.Expedition;
 
 public class ExpeditionManager : BasePlayerManager
