@@ -1,4 +1,3 @@
-
 using EggLink.DanhengServer.Data;
 using EggLink.DanhengServer.Data.Excel;
 using EggLink.DanhengServer.Database.Expedition;
@@ -9,14 +8,13 @@ using EggLink.DanhengServer.Util;
 
 namespace EggLink.DanhengServer.GameServer.Game.Expedition;
 
-public class ExpeditionManager(PlayerInstance player) : BasePlayerManager(player)
+public class ExpeditionManager : BasePlayerManager
 {
     // 直接引用 PlayerInstance 中初始化好的 Data
     public ExpeditionData Data => Player.ExpeditionData!;
 
     public ExpeditionManager(PlayerInstance player) : base(player)
     {
-        // 构造函数现在可以保持简洁，因为 PlayerInstance 已经处理了加载
     }
 
     #region Main Actions
@@ -54,31 +52,21 @@ public class ExpeditionManager(PlayerInstance player) : BasePlayerManager(player
         if (rewardConfig == null) return;
 
         // 6. 保存至数据库 
+        // 修正：使用当前服务器时间并存入列表
         var newExpedition = new ExpeditionInfoInstance
         {
             Id = info.Id,
             TotalDuration = info.TotalDuration,
-            StartExpeditionTime = info.StartExpeditionTime,
+            StartExpeditionTime = Extensions.GetUnixSec(), // 使用服务器授时
             AvatarIdList = info.AvatarIdList.ToList()
         };
+        
         Data.ExpeditionList.Add(newExpedition);
+        
+        // 标记数据库保存
+        DatabaseHelper.ToSaveUidList.SafeAdd(Player.Uid);
 
-        // 7. 发送成功回执 (AcceptExpeditionScRsp: 2538)
-        //var rsp = new AcceptExpeditionScRsp
-       // {
-       //     Retcode = 0,
-        //    AcceptExpedition = new ExpeditionInfo
-        //    {
-         //       Id = info.Id,
-         //       TotalDuration = info.TotalDuration,
-         //       StartExpeditionTime = info.StartExpeditionTime
-          //  }
-       // };
-        //rsp.AcceptExpedition.AvatarIdList.AddRange(info.AvatarIdList);
-       // await Player.SendPacket(rsp);
-
-        // 8. 触发任务系统逻辑：处理特定的派遣任务目标 
-       // await Player.MissionManager!.HandleFinishType(Enums.Mission.MissionFinishTypeEnum.FinishMission, (int)info.Id);
+        // 注意：根据你的要求，ScRsp 和任务触发逻辑暂不编写，直到你提供对应的协议或指示
     }
 
     #endregion
@@ -95,7 +83,7 @@ public class ExpeditionManager(PlayerInstance player) : BasePlayerManager(player
         {
             // 如果没有解锁任务或任务已完成，则计入槽位 
             if (team.UnlockMission == 0 || 
-                //Player.MissionManager!.GetMainMissionStatus(team.UnlockMission) == Enums.Mission.MissionPhaseEnum.Finish)
+                Player.MissionManager!.GetMainMissionStatus(team.UnlockMission) == Enums.Mission.MissionPhaseEnum.Finish)
             {
                 count++;
             }
