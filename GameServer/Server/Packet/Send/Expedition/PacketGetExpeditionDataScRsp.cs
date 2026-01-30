@@ -13,7 +13,7 @@ public class PacketGetExpeditionDataScRsp : BasePacket
             Retcode = 0
         };
 
-        [cite_start]// 从 ExpeditionManager 的数据库模型中提取数据并填充 [cite: 3]
+        // 从 ExpeditionManager 的数据库模型中提取数据并填充 [cite: 3]
         // 这里使用了我们之前在 ExpeditionData 中定义的 ToProto() 转换方法
         proto.ExpeditionList.AddRange(player.ExpeditionManager.Data.ToProto());
 
