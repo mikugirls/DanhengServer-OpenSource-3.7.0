@@ -67,6 +67,7 @@ public class ExpeditionManager : BasePlayerManager
         DatabaseHelper.ToSaveUidList.SafeAdd(Player.Uid);
 
         // 注意：根据你的要求，ScRsp 和任务触发逻辑暂不编写，直到你提供对应的协议或指示
+        await Player.SendPacket(new PacketAcceptExpeditionScRsp(newExpedition));
     }
 
     #endregion
