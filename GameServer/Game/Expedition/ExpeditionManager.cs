@@ -184,7 +184,7 @@ public async ValueTask TakeExpeditionReward(uint expeditionId)
     }
 	private async ValueTask SyncExpeditionData()
 {
-    // 1. 获取所有派遣点中已解锁的 ID
+    // 1. 获取已解锁的点位 ID 列表
     var unlockedIds = GameData.ExpeditionDataData.Values
         .Where(config => config.UnlockMission == 0 || 
                Player.MissionManager!.GetMainMissionStatus(config.UnlockMission) == Enums.Mission.MissionPhaseEnum.Finish)
@@ -194,18 +194,17 @@ public async ValueTask TakeExpeditionReward(uint expeditionId)
     // 2. 构造通知包
     var proto = new ExpeditionDataChangeScNotify
     {
-        // Tag 1: 总次数（从数据库读取，如果没有则填 0）
-        TotalExpeditionCount = Data.TotalExpeditionCount, 
+        // 【核心修复】：将 TotalExpeditionCount 改为 TotalFinishedCount
+        TotalExpeditionCount = (uint)Data.TotalFinishedCount, 
         
-        // Tag 15: 派遣列表
-        // 注意：这里需要将内存中的 Instance 转换为 Proto 格式
+        // 使用之前在 ExpeditionInfoInstance 中补全的 ToProto 方法
         ExpeditionInfo = { Data.ExpeditionList.Select(x => x.ToProto()) },
         
-        // Tag 12: 已解锁的点位（映射混淆字段）
+        // 映射已解锁点位到混淆字段 Tag 12
         JFJPADLALMD = { unlockedIds }
     };
 
-    // 3. 发送数据
+    // 3. 发送 Packet
     await Player.SendPacket(new PacketExpeditionDataChangeScNotify(proto));
 }
     #endregion
