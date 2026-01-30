@@ -15,6 +15,7 @@ public class ExpeditionManager : BasePlayerManager
 
     public ExpeditionManager(PlayerInstance player) : base(player)
     {
+    
     }
 
     #region Main Actions
@@ -68,6 +69,10 @@ public class ExpeditionManager : BasePlayerManager
 
         // 注意：根据你的要求，ScRsp 和任务触发逻辑暂不编写，直到你提供对应的协议或指示
         await Player.SendPacket(new PacketAcceptExpeditionScRsp(newExpedition));
+
+		// 5. 【核心同步】发送数据变更通知 (告知客户端：刷新 UI，锁定槽位和角色)
+    	await SyncExpeditionData();
+		
     }
 
     #endregion
@@ -162,11 +167,16 @@ public async ValueTask TakeExpeditionReward(uint expeditionId)
 
         // 6. 发送回执包 (确保 Packet 类构造函数接收 3 个参数)
         await Player.SendPacket(new PacketTakeExpeditionRewardScRsp(expeditionId, rewardProto, extraRewardProto));
+		
     }
 
     // 7. 清理数据并持久化
     Data.ExpeditionList.Remove(instance);
+	Data.TotalFinishedCount++; // 别忘了增加累计完成次数
     DatabaseHelper.ToSaveUidList.SafeAdd(Player.Uid);
+	// 8. 【最后同步】在数据彻底移除后发送通知
+    // 此时 SyncExpeditionData 内部读取的是已经 Remove 掉后的列表，客户端才会真正“释放”这个格子
+    await SyncExpeditionData();
 }
 
 	/// <summary>
@@ -181,6 +191,9 @@ public async ValueTask TakeExpeditionReward(uint expeditionId)
         DatabaseHelper.ToSaveUidList.SafeAdd(Player.Uid);
 
         await Player.SendPacket(new PacketCancelExpeditionScRsp(expeditionId));
+		// 8. 【最后同步】在数据彻底移除后发送通知
+    	// 此时 SyncExpeditionData 内部读取的是已经 Remove 掉后的列表，客户端才会真正“释放”这个格子
+    	await SyncExpeditionData();
     }
 	private async ValueTask SyncExpeditionData()
 {
@@ -206,6 +219,11 @@ public async ValueTask TakeExpeditionReward(uint expeditionId)
 
     // 3. 发送 Packet
     await Player.SendPacket(new PacketExpeditionDataChangeScNotify(proto));
+}
+public async ValueTask Initialize()
+{
+    // 玩家上线时同步一次全量数据
+    await SyncExpeditionData();
 }
     #endregion
 }
