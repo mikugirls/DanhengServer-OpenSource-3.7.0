@@ -101,32 +101,33 @@ public async ValueTask TakeExpeditionReward(uint expeditionId)
     var instance = Data.ExpeditionList.FirstOrDefault(x => x.Id == expeditionId);
     if (instance == null) return;
 
-    // 2. 时间校验：当前时间 < 开始时间 + 总时长 则不能领取
+    // 2. 时间校验：当前时间 < 开始时间 + 总时长（秒）则不能领取
     long currentTime = Extensions.GetUnixSec();
     if (currentTime < (instance.StartExpeditionTime + instance.TotalDuration))
     {
         return;
     }
 
-    // 3. 获取奖励配置 ID
-    // 派遣奖励通常在 Excel 中通过 ExpeditionID 和 Duration 映射到一个 RewardID
+    // 3. 获取奖励配置
     var rewardConfig = GameData.ExpeditionIdToRewards[(int)instance.Id]
         .FirstOrDefault(x => (uint)(x.Duration * 3600) == instance.TotalDuration);
     
     if (rewardConfig != null)
     {
-        // 4. 【核心发放】调用 InventoryManager 处理奖励表
-        // notify: true 会弹出右侧获得物品提示，sync: true 会同步背包数字
-        var rewardItems = await Player.InventoryManager!.HandleReward(rewardConfig.RewardId, notify: true, sync: true);
+        // --- 核心修复：修正为 RewardID ---
+        [cite_start]// 使用 InventoryManager 的 HandleReward 统一处理入库、同步和弹窗通知 [cite: 110, 112]
+        var rewardItems = await Player.InventoryManager!.HandleReward(rewardConfig.RewardID, notify: true, sync: true);
 
-        // 5. 构造并发送回执包
+        // 4. 构造回执协议的奖励列表
         var rewardProto = new ItemList();
+        [cite_start]// 将 ItemData 转换为协议使用的 Item 格式 [cite: 115]
         rewardProto.ItemList_.AddRange(rewardItems.Select(x => x.ToProto()));
         
+        // 5. 发送领奖成功回执包
         await Player.SendPacket(new PacketTakeExpeditionRewardScRsp(expeditionId, rewardProto));
     }
 
-    // 6. 移除记录并存档
+    // 6. 移除记录并标记数据库保存
     Data.ExpeditionList.Remove(instance);
     DatabaseHelper.ToSaveUidList.SafeAdd(Player.Uid);
 }
