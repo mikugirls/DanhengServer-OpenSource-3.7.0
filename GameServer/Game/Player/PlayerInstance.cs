@@ -95,7 +95,11 @@ public partial class PlayerInstance(PlayerData data)
     public GridFightManager? GridFightManager { get; private set; }
 
     #endregion
+	#region Expedition Managers
 
+    public ExpeditionManager? ExpeditionManager { get; private set; } // 
+
+    #endregion
     #region Others
 
     public MailManager? MailManager { get; private set; }
@@ -199,7 +203,7 @@ public partial class PlayerInstance(PlayerData data)
         TrainPartyManager = new TrainPartyManager(this);
         GridFightManager = new GridFightManager(this);
         OfferingManager = new OfferingManager(this);
-
+		
         PlayerUnlockData = InitializeDatabase<PlayerUnlockData>();
         SceneData = InitializeDatabase<SceneData>();
         HeartDialData = InitializeDatabase<HeartDialData>();
@@ -208,7 +212,8 @@ public partial class PlayerInstance(PlayerData data)
         ServerPrefsData = InitializeDatabase<ServerPrefsData>();
         BattleCollegeData = InitializeDatabase<BattleCollegeData>();
         FriendRecordData = InitializeDatabase<FriendRecordData>();
-
+		// --- 添加派遣管理器初始化 ---
+        ExpeditionManager = new ExpeditionManager(this); //
         Components.Add(new SwitchHandComponent(this));
         
         if ((int)(ServerPrefsData.Version * 1000) != GameConstants.GameVersionInt)
@@ -343,7 +348,11 @@ public partial class PlayerInstance(PlayerData data)
         // 同步包含 31(碎片)和 33(沉浸器) 的肉鸽货币包
         await SendPacket(new EggLink.DanhengServer.GameServer.Server.Packet.Send.RogueCommon.PacketSyncRogueCommonVirtualItemInfoScNotify(RogueManager.RogueInstance));
 		}
-		
+		// 登录时同步派遣数据
+        if (ExpeditionManager != null)
+        {
+            await SendPacket(new PacketGetExpeditionDataScRsp(this)); // 
+        }
 		if (ActivityManager != null)
     {
        // 使用 Packet 类进行装箱
