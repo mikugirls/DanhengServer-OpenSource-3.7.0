@@ -7,25 +7,24 @@ namespace EggLink.DanhengServer.GameServer.Server.Packet.Send.Expedition;
 
 public class PacketGetExpeditionDataScRsp : BasePacket
 {
-    public PacketGetExpeditionDataScRsp(PlayerInstance player) : base(CmdIds.GetExpeditionDataScRsp)
+  public PacketGetExpeditionDataScRsp(PlayerInstance player) : base(CmdIds.GetExpeditionDataScRsp)
+{
+    var proto = new GetExpeditionDataScRsp
     {
-        var proto = new GetExpeditionDataScRsp
-        {
-            Retcode = 0,
-            // 对应 team_count: 告诉客户端当前解锁了多少个派遣槽位
-            TotalExpeditionCount = (uint)player.ExpeditionManager.GetUnlockedExpeditionSlots()
-        };
+        Retcode = 0,
+        // 使用 ?. 和 ?? 语法安全获取槽位数量
+        TotalExpeditionCount = (uint)(player.ExpeditionManager?.GetUnlockedExpeditionSlots() ?? 2)
+    };
 
-        if (player.ExpeditionData != null)
-        {
-            // 修正：字段名必须匹配协议中的 ExpeditionInfo
-            proto.ExpeditionInfo.AddRange(player.ExpeditionData.ToProto());
+    // 使用 ?. 确保只有在 Manager 和 Data 都不为空时才 AddRange
+    if (player.ExpeditionData != null)
+    {
+        proto.ExpeditionInfo.AddRange(player.ExpeditionData.ToProto());
 
-            // 对应 unlocked_expedition_id_list: 下发已解锁的派遣点 ID 列表
-            // 暂时下发所有配置 ID 以防客户端界面显示“锁定”
-            proto.JFJPADLALMD.AddRange(GameData.ExpeditionDataData.Keys.Select(x => (uint)x));
-        }
-
-        SetData(proto);
+        // 下发已解锁的 ID 列表
+        proto.JFJPADLALMD.AddRange(GameData.ExpeditionDataData.Keys.Select(x => (uint)x));
     }
+
+    SetData(proto);
+}
 }
