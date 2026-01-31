@@ -107,9 +107,13 @@ public class FormalAvatarInfo : BaseAvatarInfo
     public bool IsMarked { get; set; } = false;
 
     public bool HasTakenReward(int promotion)
-    {
-        return (Rewards & (1 << promotion)) != 0;
-    }
+{
+    // 强制检查：必须确保 promotion 参数是 1, 3, 5 之一
+    // 否则直接判定为已领，防止通过包体注入非 1/3/5 的数值来刷票
+    if (promotion != 1 && promotion != 3 && promotion != 5) return true;
+
+    return (Rewards & (1 << promotion)) != 0;
+}
 
     public void ValidateHero(Gender gender)
     {
@@ -135,48 +139,66 @@ public class FormalAvatarInfo : BaseAvatarInfo
         PathInfos.Add(AvatarId, path);
     }
 
-    public void TakeReward(int promotion)
+   public bool TakeReward(int promotion)
+	{
+    // 核心拦截：如果 HasTakenReward 返回 true，说明位掩码中已存在该阶位记录
+    if (HasTakenReward(promotion)) 
     {
-        Rewards |= 1 << promotion;
+        return false; // 告知处理器：此奖励已领过
     }
+
+    // 执行位运算标记
+    Rewards |= 1 << promotion;
+    return true; // 告知处理器：标记成功，可以发放奖励
+}
 
     public override Proto.Avatar ToProto()
+{
+    var proto = new Proto.Avatar
     {
-        var proto = new Proto.Avatar
+        BaseAvatarId = (uint)BaseAvatarId,
+        Level = (uint)Level,
+        Exp = (uint)Exp,
+        Promotion = (uint)Promotion,
+        Rank = (uint)GetCurPathInfo().Rank,
+        FirstMetTimeStamp = (ulong)Timestamp,
+        IsMarked = IsMarked,
+        DressedSkinId = (uint)GetCurPathInfo().Skin,
+        CurEnhanceId = (uint)GetCurPathInfo().EnhanceId
+    };
+
+    foreach (var item in GetCurPathInfo().Relic)
+        proto.EquipRelicList.Add(new EquipRelic
         {
-            BaseAvatarId = (uint)BaseAvatarId,
-            Level = (uint)Level,
-            Exp = (uint)Exp,
-            Promotion = (uint)Promotion,
-            Rank = (uint)GetCurPathInfo().Rank,
-            FirstMetTimeStamp = (ulong)Timestamp,
-            IsMarked = IsMarked,
-            DressedSkinId = (uint)GetCurPathInfo().Skin,
-            CurEnhanceId = (uint)GetCurPathInfo().EnhanceId
-        };
+            RelicUniqueId = (uint)item.Value,
+            Type = (uint)item.Key
+        });
 
-        foreach (var item in GetCurPathInfo().Relic)
-            proto.EquipRelicList.Add(new EquipRelic
-            {
-                RelicUniqueId = (uint)item.Value,
-                Type = (uint)item.Key
-            });
+    if (GetCurPathInfo().EquipId != 0) proto.EquipmentUniqueId = (uint)GetCurPathInfo().EquipId;
 
-        if (GetCurPathInfo().EquipId != 0) proto.EquipmentUniqueId = (uint)GetCurPathInfo().EquipId;
+    foreach (var skill in GetCurPathInfo().GetSkillTree())
+        proto.SkilltreeList.Add(new AvatarSkillTree
+        {
+            PointId = (uint)skill.Key,
+            Level = (uint)skill.Value
+        });
 
-        foreach (var skill in GetCurPathInfo().GetSkillTree())
-            proto.SkilltreeList.Add(new AvatarSkillTree
-            {
-                PointId = (uint)skill.Key,
-                Level = (uint)skill.Value
-            });
-
-        for (var i = 0; i < Promotion; i++)
-            if (HasTakenReward(i))
-                proto.HasTakenPromotionRewardList.Add((uint)i);
-
-        return proto;
+    // --- 核心修复点：同步已领取状态给客户端 UI ---
+    // 官方晋阶奖励固定在 1, 3, 5 阶。
+    // 你之前的循环条件是 i < Promotion，如果当前是 2 阶领 2 阶奖励，i 永远点不到 2。
+    // 在 AvatarData.cs 的 FormalAvatarInfo.ToProto() 中：
+	int[] checkLevels = { 1, 3, 5 };
+	foreach (var lv in checkLevels)
+	{
+    // 逻辑：只要角色等级够领该档位，且 Rewards 位标记已领，就发给客户端
+    if (this.Promotion >= lv && this.HasTakenReward(lv)) 
+    {
+        proto.HasTakenPromotionRewardList.Add((uint)lv);
     }
+}
+
+    return proto;
+}
 
     public override LineupAvatar ToLineupInfo(int slot, LineupInfo info,
         AvatarType avatarType = AvatarType.AvatarFormalType)

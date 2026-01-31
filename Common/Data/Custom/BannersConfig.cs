@@ -29,36 +29,32 @@ public class BannerConfig
     public int MaxCount { get; set; } = 90;
     public int EventChance { get; set; } = 50;
 
-   public int DoGacha(List<int> goldAvatars, List<int> purpleAvatars, List<int> purpleWeapons, List<int> goldWeapons,
-    List<int> blueWeapons, GachaData data, Random playerRand) // <-- 修改参数：传入持久化随机实例
+	public int DoGacha(List<int> goldAvatars, List<int> purpleAvatars, List<int> purpleWeapons, List<int> goldWeapons,
+    List<int> blueWeapons, GachaData data, Random playerRand)
 {
-    // --- 1. 获取水位逻辑 (保持不变) ---
+    // --- 1. 获取当前卡池水位 (加上 ?? 0 保护) ---
     int pityCount = 0;
-    if (this.GachaId == 4001) pityCount = data.NewbiePityCount;
-    else if (this.GachaId == 1001) pityCount = data.StandardPityCount;
-    else if (GachaType == GachaTypeEnum.AvatarUp) pityCount = data.LastAvatarGachaPity; 
-    else if (GachaType == GachaTypeEnum.WeaponUp) pityCount = data.LastWeaponGachaPity;
+    if (this.GachaId == 4001) pityCount = data.NewbiePityCount ?? 0;
+    else if (this.GachaId == 1001) pityCount = data.StandardPityCount ?? 0;
+    else if (GachaType == GachaTypeEnum.AvatarUp) pityCount = data.LastAvatarGachaPity ?? 0; 
+    else if (GachaType == GachaTypeEnum.WeaponUp) pityCount = data.LastWeaponGachaPity ?? 0;
 
     int currentMaxCount = (GachaType == GachaTypeEnum.WeaponUp) ? 80 : 90;
     int softPityStart5 = (GachaType == GachaTypeEnum.WeaponUp) ? 62 : 72; 
 
-    // --- 2. 独立累加水位 (保持不变) ---
-    if (this.GachaId == 4001) {
-        data.NewbiePityCount++;
-        data.NewbieGachaCount++; 
+    // --- 2. 独立累加水位 (判定前自增) ---
+    if (this.GachaId == 4001) { 
+        data.NewbiePityCount = (data.NewbiePityCount ?? 0) + 1; 
+        data.NewbieGachaCount = (data.NewbieGachaCount ?? 0) + 1; 
     }
-    else if (this.GachaId == 1001) {
-        data.StandardPityCount++;
-        data.StandardCumulativeCount++; 
+    else if (this.GachaId == 1001) { 
+        data.StandardPityCount = (data.StandardPityCount ?? 0) + 1; 
+        data.StandardCumulativeCount = (data.StandardCumulativeCount) + 1; // 该字段本身不为 null
     }
-    else if (GachaType == GachaTypeEnum.AvatarUp) {
-        data.LastAvatarGachaPity++; 
-    }
-    else if (GachaType == GachaTypeEnum.WeaponUp) {
-        data.LastWeaponGachaPity++; 
-    }
+    else if (GachaType == GachaTypeEnum.AvatarUp) data.LastAvatarGachaPity = (data.LastAvatarGachaPity ?? 0) + 1; 
+    else if (GachaType == GachaTypeEnum.WeaponUp) data.LastWeaponGachaPity = (data.LastWeaponGachaPity ?? 0) + 1;
 
-    data.LastGachaPurpleFailedCount++; 
+    data.LastGachaPurpleFailedCount = (data.LastGachaPurpleFailedCount ?? 0) + 1; 
 
     // --- 3. 五星判定概率计算 ---
     double currentChance5 = GetRateUpItem5Chance / 1000.0; 
@@ -67,52 +63,92 @@ public class BannerConfig
     }
 
     int item;
-    // --- 4. 五星判定：使用 playerRand ---
-    if (playerRand.NextDouble() < currentChance5 || pityCount + 1 >= currentMaxCount) {
+    
+    // --- 4. 五星判定逻辑 ---
+    if (playerRand.NextDouble() < currentChance5 || pityCount + 1 >= currentMaxCount) 
+    {
+        // 精准重置水位
         if (this.GachaId == 1001) data.StandardPityCount = 0;
         else if (this.GachaId == 4001) data.NewbiePityCount = 0;
         else if (GachaType == GachaTypeEnum.AvatarUp) data.LastAvatarGachaPity = 0;
         else if (GachaType == GachaTypeEnum.WeaponUp) data.LastWeaponGachaPity = 0;
 
-        if (GachaType == GachaTypeEnum.WeaponUp) {
-            // 注意：GetRateUpItem5 内部也需要同步修改为使用 playerRand
-            item = GetRateUpItem5(goldWeapons, data.LastWeaponGachaFailed, playerRand);
-            data.LastWeaponGachaFailed = !RateUpItems5.Contains(item);
+        if (GachaType == GachaTypeEnum.AvatarUp) 
+        {
+            bool isUp = (data.LastAvatarGachaFailed ?? false) || playerRand.Next(0, 100) < 50;
+            if (isUp && RateUpItems5.Count > 0) {
+                item = RateUpItems5[playerRand.Next(0, RateUpItems5.Count)];
+                data.LastAvatarGachaFailed = false;
+            } else {
+                item = goldAvatars[playerRand.Next(0, goldAvatars.Count)];
+                data.LastAvatarGachaFailed = true;
+            }
         }
-        else if (GachaType == GachaTypeEnum.AvatarUp) {
-            item = GetRateUpItem5(goldAvatars, data.LastAvatarGachaFailed, playerRand);
-            data.LastAvatarGachaFailed = !RateUpItems5.Contains(item);
+        else if (GachaType == GachaTypeEnum.WeaponUp) 
+        {
+            // 75% 概率
+            bool isUp = (data.LastWeaponGachaFailed ?? false) || playerRand.Next(0, 100) < 75;
+            if (isUp && RateUpItems5.Count > 0) {
+                item = RateUpItems5[playerRand.Next(0, RateUpItems5.Count)];
+                data.LastWeaponGachaFailed = false;
+            } else {
+                item = goldWeapons[playerRand.Next(0, goldWeapons.Count)];
+                data.LastWeaponGachaFailed = true;
+            }
         }
-        else {
-            item = GetRateUpItem5([.. goldAvatars, .. goldWeapons], false, playerRand);
+        else if (GachaType == GachaTypeEnum.Newbie) 
+        {
+            item = goldAvatars[playerRand.Next(0, goldAvatars.Count)];
+        }
+        else 
+        {
+            // 常驻池 50/50
+            if (playerRand.Next(0, 100) < 50) item = goldAvatars[playerRand.Next(0, goldAvatars.Count)];
+            else item = goldWeapons[playerRand.Next(0, goldWeapons.Count)];
         }
     }
-    else {
-        // --- 5. 四星及三星判定：使用 playerRand ---
+    else 
+    {
+        // --- 5. 四星判定逻辑 ---
         double currentChance4 = 0.051; 
-        if (data.LastGachaPurpleFailedCount >= 9) currentChance4 = 0.51;
+        if ((data.LastGachaPurpleFailedCount ?? 0) >= 9) currentChance4 = 0.51; 
 
-        if (playerRand.NextDouble() < currentChance4 || data.LastGachaPurpleFailedCount >= 10) {
-            data.LastGachaPurpleFailedCount = 0;
-            
-            // 判定是否为 UP 项
-            bool isUp = playerRand.Next(0, 100) < 50 && RateUpItems4.Count > 0;
-            if (isUp) {
+        if (playerRand.NextDouble() < currentChance4 || (data.LastGachaPurpleFailedCount ?? 0) >= 10) 
+        {
+            data.LastGachaPurpleFailedCount = 0; 
+            bool isUp = (data.LastPurpleGachaFailed ?? false) || playerRand.Next(0, 100) < 50;
+
+            if (isUp && RateUpItems4.Count > 0) 
+            {
                 item = RateUpItems4[playerRand.Next(0, RateUpItems4.Count)];
+                data.LastPurpleGachaFailed = false;
             }
-            else {
-                var pool = GachaType == GachaTypeEnum.AvatarUp ? (playerRand.Next(0, 2) == 0 ? purpleAvatars : purpleWeapons) : 
-                          (GachaType == GachaTypeEnum.WeaponUp ? (playerRand.Next(0, 10) < 3 ? purpleAvatars : purpleWeapons) : 
-                          [.. purpleAvatars, .. purpleWeapons]);
-                item = pool[playerRand.Next(0, pool.Count)];
+            else 
+            {
+                if (GachaType == GachaTypeEnum.AvatarUp)
+                {
+                    if (playerRand.Next(0, 100) < 50) item = purpleAvatars[playerRand.Next(0, purpleAvatars.Count)];
+                    else item = purpleWeapons[playerRand.Next(0, purpleWeapons.Count)];
+                }
+                else if (GachaType == GachaTypeEnum.WeaponUp)
+                {
+                    // 75% 武器权重
+                    if (playerRand.Next(0, 100) < 75) item = purpleWeapons[playerRand.Next(0, purpleWeapons.Count)];
+                    else item = purpleAvatars[playerRand.Next(0, purpleAvatars.Count)];
+                }
+                else
+                {
+                    List<int> pool = [.. purpleAvatars, .. purpleWeapons]; 
+                    item = pool[playerRand.Next(0, pool.Count)];
+                }
+                data.LastPurpleGachaFailed = true; 
             }
         }
-        else {
-            // 三星逻辑
+        else 
+        {
             item = blueWeapons[playerRand.Next(0, blueWeapons.Count)];
         }
     }
-    
     return item;
 }
 
@@ -142,7 +178,7 @@ public class BannerConfig
         {
             GachaId = (uint)GachaId,
            
-			GDIFAAHIFBH = (uint)data.NewbieGachaCount,						
+			GDIFAAHIFBH = (uint)(data.NewbieGachaCount ?? 0),					
             DetailWebview = $"http://{host}/gacha/history?id={GachaId}&uid={playerUid}",
             DropHistoryWebview = $"http://{host}/gacha/history?id={GachaId}&uid={playerUid}"
         };
@@ -164,7 +200,7 @@ public class BannerConfig
         {
             info.GachaCeiling = new GachaCeiling
             {
-                IsClaimed = data.IsStandardSelected,
+                IsClaimed = data.IsStandardSelected ?? false,
                 CeilingNum = (uint)data.StandardCumulativeCount, 
                 AvatarList = { goldAvatar.Select(id => new GachaCeilingAvatar { AvatarId = (uint)id }) }
             };
