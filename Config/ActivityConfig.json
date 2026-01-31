@@ -1,9 +1,9 @@
 {
   "scheduleData": [
-  {
-      "activityId": 1001401, // 邀游天外
-      "beginTime": "0",
-      "endTime": "1686034740",
+    {
+      "activityId": 1001402, // 1.0 邀游天外 【庆典祝礼】
+      "beginTime": "1682474400", // 2023-04-26 10:00
+      "endTime": "1686014399",   // 2023-06-06 03:59
       "panelId": 10014
     },
     {
@@ -175,7 +175,7 @@
       "panelId": 20069
     },
     {
-      "activityId": 2007100, // 未知活动（2007100）
+      "activityId": 2007100, // 昔涟&&白厄
       "beginTime": "1764129600",
       "endTime": "1765868399",
       "panelId": 20071
@@ -690,6 +690,115 @@
       "endTime": "1693292340",
       "panelId": 10028
     },
+	
+    {
+      "activityId": 1003201, // 1.4 巡星之礼 (第四期)
+      "beginTime": "1696982400", // 2023-10-11 08:00
+      "endTime": "1699905599",   // 2023-11-14 03:59
+      "panelId": 10032
+    },
+    {
+      "activityId": 1003501, // 1.5 巡星之礼 (第五期)
+      "beginTime": "1700011200", // 2023-11-15 04:00
+      "endTime": "1703534399",   // 2023-12-26 03:59
+      "panelId": 10035
+    },
+    {
+      "activityId": 1003901, // 1.6 巡星之礼 (第六期)
+      "beginTime": "1703640000", // 2023-12-27 08:00
+      "endTime": "1707076799",   // 2024-02-05 03:59
+      "panelId": 10039
+    },
+    {
+      "activityId": 1004001, // 2.0 巡星之礼 (第七期)
+      "beginTime": "1707177600", // 2024-02-06 08:00
+      "endTime": "1711396799",   // 2024-03-26 03:59
+      "panelId": 10040
+    },
+    {
+      "activityId": 1004701, // 2.1 巡星之礼 (常规)
+      "beginTime": "1711483200", // 2024-03-27 04:00
+      "endTime": "1715025599",   // 2024-05-07 03:59
+      "panelId": 10047
+    },
+    {
+      "activityId": 1004801, // 2.1 庆典祝礼 (一周年礼包) 【庆典祝礼】
+      "beginTime": "1711483201",
+      "endTime": "1715025599",
+      "panelId": 10048
+    },
+    {
+      "activityId": 1005101, // 2.2 巡星之礼 (第九期)
+      "beginTime": "1715126400", // 2024-05-08 08:00
+      "endTime": "1718654399",   // 2024-06-18 03:59
+      "panelId": 10051
+    },
+    {
+      "activityId": 1005601, // 2.3 巡星之礼 (第十期)
+      "beginTime": "1718755200", // 2024-06-19 08:00
+      "endTime": "1722283199",   // 2024-07-30 03:59
+      "panelId": 10056
+    },
+    {
+      "activityId": 1005701, // 2.4 巡星之礼 (第十一期)
+      "beginTime": "1722384000", // 2024-07-31 08:00
+      "endTime": "1725825599",   // 2024-09-09 03:59
+      "panelId": 10057
+    },
+    {
+      "activityId": 1005801, // 2.5 巡星之礼 (第十二期)
+      "beginTime": "1725926400", // 2024-09-10 08:00
+      "endTime": "1729627199",   // 2024-10-23 03:59
+      "panelId": 10058
+    },
+    {
+      "activityId": 1005901, // 2.6 巡星之礼 (第十三期)
+      "beginTime": "1729728000", // 2024-10-24 08:00
+      "endTime": "1733169599",   // 2024-12-03 03:59
+      "panelId": 10059
+    },
+    {
+      "activityId": 1006001, // 2.7 巡星之礼 (第十四期)
+      "beginTime": "1733270400", // 2024-12-04 08:00
+      "endTime": "1736884799",   // 2025-01-15 03:59
+      "panelId": 10060
+    },
+    {
+      "activityId": 1007201, // 3.0 庆典祝礼 (第十五期) 【庆典祝礼】
+      "beginTime": "1736985600", // 2025-01-16 08:00
+      "endTime": "1740513599",   // 2025-02-26 03:59
+      "panelId": 10072
+    },
+    {
+      "activityId": 1008501, // 3.1 庆典祝礼 (第十六期) 【庆典祝礼】
+      "beginTime": "1740614400", // 2025-02-27 08:00
+      "endTime": "1744055999",   // 2025-04-08 03:59
+      "panelId": 10085
+    },
+    {
+      "activityId": 1008001, // 3.2 庆典祝礼 (二周年签到)
+      "beginTime": "1744164000", // 2025-04-09 10:00
+      "endTime": "1747684799",   // 2025-05-20 03:59
+      "panelId": 10080
+    },
+    {
+      "activityId": 1009501, // 3.3 巡星之礼 (第十七期)
+      "beginTime": "1747699200", // 2025-05-21 04:00
+      "endTime": "1751313599",   // 2025-07-01 03:59
+      "panelId": 10095
+    },
+    {
+      "activityId": 1009301, // 3.4 庆典祝礼 (第十八期) 【庆典祝礼】
+      "beginTime": "1751328000", // 2025-07-02 04:00
+      "endTime": "1755028799",   // 2025-08-13 03:59
+      "panelId": 10093
+    },
+    {
+      "activityId": 1012501, // 3.5 庆典祝礼 (第十九期) 【庆典祝礼】
+      "beginTime": "1755043200", // 2025-08-14 04:00
+      "endTime": "1758571199",   // 2025-09-23 03:59
+      "panelId": 10125
+    },
     {
       "activityId": 1002501, // 登栖敛翼
       "beginTime": "1664308800",
@@ -710,284 +819,273 @@
     },
     {
       "activityId": 2000101, // 希尔
-      "beginTime": "0",
-      "endTime": "1684339199",
+      "beginTime": "1686034740",
+      "endTime": "1687935540",
       "panelId": 20001
     },
     {
       "activityId": 2000202, // 景元
-      "beginTime": "1684339199",
-      "endTime": "1686034740",
+      "beginTime": "0",
+      "endTime": "0",
       "panelId": 20002
     },
     {
       "activityId": 2000501, // 银狼
-      "beginTime": "1686034740",
-      "endTime": "1687935540",
+      "beginTime": "0",
+      "endTime": "0",
       "panelId": 20005
     },
     {
       "activityId": 2000601, // 罗刹
-      "beginTime": "1687935540",
-      "endTime": "1689663540",
+      "beginTime": "0",
+      "endTime": "0",
       "panelId": 20006
     },
     {
       "activityId": 2000801, // 刃
-      "beginTime": "1689663540",
-      "endTime": "1691564340",
+      "beginTime": "0",
+      "endTime": "0",
       "panelId": 20008
     },
     {
       "activityId": 2001001, // 卡芙卡
-      "beginTime": "1691564340",
-      "endTime": "1693292340",
+      "beginTime": "0",
+      "endTime": "0",
       "panelId": 20010
     },
-	 {
+    {
       "activityId": 2001201, // 丹恒•饮月
-      "beginTime": "1693292340",
-      "endTime": "1695193140",
+      "beginTime": "1686034740",
+      "endTime": "1687935540",
       "panelId": 20012
     },
-	{
-      "activityId": 2001301, //  符玄
-      "beginTime": "1695193140",
-      "endTime": "1696921140",
+    {
+      "activityId": 2001301, // 符玄
+      "beginTime": "1686034740",
+      "endTime": "1687935540",
       "panelId": 20013
     },
-	 {
+    {
       "activityId": 2001601, // 镜流
       "beginTime": "1696921140",
       "endTime": "1698389940",
       "panelId": 20016
     },
-	 {
+    {
       "activityId": 2001701, // 托帕
       "beginTime": "1698389940",
       "endTime": "1699945140",
       "panelId": 20017
     },
-	{
+    {
       "activityId": 2001901, // 藿藿
       "beginTime": "1699945140",
       "endTime": "1701845940",
       "panelId": 20019
     },
-	{
+    {
       "activityId": 2002001, // 银枝
       "beginTime": "1701845940",
       "endTime": "1703573940",
       "panelId": 20020
     },
-	{
+    {
       "activityId": 2002401, // 阮•梅&&真理
       "beginTime": "1703573940",
       "endTime": "1707125081",
       "panelId": 20024
     },
-	{
+    {
       "activityId": 2002500, // 黑天鹅
       "beginTime": "1707125081",
       "endTime": "1707125081",
       "panelId": 20025
     },
-	{
+    {
       "activityId": 2002600, // 花火
       "beginTime": "1709198681",
       "endTime": "1711436399",
       "panelId": 20026
     },
-	{
+    {
       "activityId": 2002700, // 黄泉
       "beginTime": "1711436399",
       "endTime": "1713337199",
       "panelId": 20027
     },
-	
-	{
+    {
       "activityId": 2002900, // 砂金
       "beginTime": "1713337199",
       "endTime": "1715065199",
       "panelId": 20029
     },
-	{
+    {
       "activityId": 2003100, // 知更鸟
       "beginTime": "1715065199",
       "endTime": "1716965999",
       "panelId": 20031
     },
-	{
+    {
       "activityId": 2003200, // 波提欧
       "beginTime": "1716965999",
       "endTime": "1718693999",
       "panelId": 20032
     },
-	{
+    {
       "activityId": 2003400, // 流萤
       "beginTime": "1718693999",
       "endTime": "1720594799",
       "panelId": 20033
     },
-	{
+    {
       "activityId": 2003500, // 翡翠
       "beginTime": "1720594799",
       "endTime": "1722322799",
       "panelId": 20035
     },
-	{
+    {
       "activityId": 2003700, // 云璃
       "beginTime": "1722322799",
       "endTime": "1724223599",
       "panelId": 20037
     },
-	{
+    {
       "activityId": 2003800, // 椒丘
       "beginTime": "1724223599",
       "endTime": "1725865199",
       "panelId": 20038
     },
-	{
+    {
       "activityId": 2004000, // 飞霄&&知更鸟
       "beginTime": "1725865199",
       "endTime": "1727852399",
       "panelId": 20040
     },
-	{
+    {
       "activityId": 2004100, // 灵砂
       "beginTime": "1727852399",
       "endTime": "1729580399",
       "panelId": 20041
     },
-	{
+    {
       "activityId": 2004400, // 乱破
       "beginTime": "1729580399",
       "endTime": "1731505283",
       "panelId": 20044
     },
-	{
+    {
       "activityId": 2004500, // 黄泉
       "beginTime": "1731505283",
       "endTime": "1733233283",
       "panelId": 20045
     },
-	{
+    {
       "activityId": 2004700, // 星期日
       "beginTime": "1733233283",
       "endTime": "1735099200",
       "panelId": 20047
     },
-	{
+    {
       "activityId": 2004800, // 忘归人
       "beginTime": "1735099201",
       "endTime": "1736838000",
       "panelId": 20048
     },
-	{
+    {
       "activityId": 2005000, // 大黑塔
       "beginTime": "1736893800",
       "endTime": "1738727940",
       "panelId": 20050
     },
-	{
+    {
       "activityId": 2005100, // 阿格莱雅
       "beginTime": "1738728000",
       "endTime": "1740466800",
       "panelId": 20051
     },
-
-{
+    {
       "activityId": 2005400, // 缇宝
       "beginTime": "1740522600",
       "endTime": "1742356740",
       "panelId": 20053
     },
-{
+    {
       "activityId": 2005500, // 万敌
       "beginTime": "1742356800",
       "endTime": "1744095600",
       "panelId": 20055
     },
-{
+    {
       "activityId": 2005700, // 遐蝶
       "beginTime": "1744192800",
       "endTime": "1746007200",
       "panelId": 20057
     },
-{
+    {
       "activityId": 2005800, // 那刻夏
       "beginTime": "1745985540",
       "endTime": "1747713540",
       "panelId": 20058
     },
-{
+    {
       "activityId": 2006000, // 风堇
       "beginTime": "1747713540",
       "endTime": "1749614340",
       "panelId": 20060
     },
-{
+    {
       "activityId": 2006100, // 赛飞儿
       "beginTime": "1749614340",
       "endTime": "1751342340",
       "panelId": 20061
     },
-{
+    {
       "activityId": 2006200, // 白厄
       "beginTime": "1751342340",
       "endTime": "1753243140",
       "panelId": 20062
     },
-{
+    {
       "activityId": 2006300, // 流萤
       "beginTime": "1753243200",
       "endTime": "1754982000",
       "panelId": 20063
     },
-{
+    {
       "activityId": 2006500, // 海瑟音
       "beginTime": "1755054000",
       "endTime": "1756785540",
       "panelId": 20065
     },
-{
+    {
       "activityId": 2006600, // 刻律德菈
       "beginTime": "1756785600",
       "endTime": "1758610800",
       "panelId": 20066
     },
-{
+    {
       "activityId": 2006700, // 长夜月
       "beginTime": "1758664800",
       "endTime": "1760500740",
       "panelId": 20067
     },
-{
+    {
       "activityId": 2006800, // 丹恒·腾荒
       "beginTime": "1760500800",
       "endTime": "1762239600",
       "panelId": 20068
     },
-{
-      "activityId": 2007000, //昔涟&&风堇
+    {
+      "activityId": 2007000, // 昔涟&&风堇
       "beginTime": "1762295400",
       "endTime": "1764129540",
       "panelId": 20070
     },
- 
-  {
+    {
       "activityId": 2007100, // 昔涟&&白厄
       "beginTime": "1764129540",
       "endTime": "1765868400",
       "panelId": 20071
     }
-
-	
-
-	
-	
-	
-	
-	
   ]
 }

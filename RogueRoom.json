@@ -151,7 +151,7 @@
       9
     ],
     "GroupWithContent": {
-      "99": 15002
+      "99": 12002
     },
     "GroupID": 99,
     "RogueRoomType": 6,
@@ -319,8 +319,9 @@
       9
     ],
     "GroupWithContent": {
-      "80": 300307
+      "80": 13002
     },
+	"Variation": 3,
     "GroupID": 80,
     "RogueRoomType": 6,
     "RogueRoomID": 200611,
@@ -543,7 +544,7 @@
     "GroupWithContent": {
       "80": 13002
     },
-	
+	"Variation": 2,
     "GroupID": 80,
     "RogueRoomType": 6,
     "RogueRoomID": 200612,
@@ -1116,9 +1117,9 @@
       1
     ],
     "GroupWithContent": {
-      "94": 16002
+      "94": 15002
     },
-	"Variation": 3,
+	
     "GroupID": 94,
     "RogueRoomType": 6,
     "RogueRoomID": 300612,
@@ -1468,7 +1469,7 @@
       6
     ],
     "GroupWithContent": {
-      "88": 16002
+      "88": 13002
     },
 	"Variation": 3,
     "GroupID": 88,
@@ -1690,10 +1691,9 @@
       6
     ],
     "GroupWithContent": {
-      "88": 14002
+      "88": 13002
     },
-	"Variation": 3,
-    "GroupID": 88,
+	"GroupID": 88,
     "RogueRoomType": 6,
     "RogueRoomID": 111612,
     "MapEntrance": 8111101
@@ -1873,7 +1873,7 @@
       6
     ],
     "GroupWithContent": {
-      "89": 14901
+      "89": 13901
     },
     "GroupID": 89,
     "RogueRoomType": 7,
@@ -2042,10 +2042,10 @@
       5
     ],
     "GroupWithContent": {
-      "83": 15002,
+      "83": 14002,
       "114": 0
     },
-	"Variation": 2,
+	"Variation": 3,
     "GroupID": 83,
     "RogueRoomType": 6,
     "RogueRoomID": 121611,
@@ -2265,9 +2265,9 @@
       5
     ],
     "GroupWithContent": {
-      "83": 17002
+      "83": 14002
     },
-	"Variation": 4,
+	"Variation": 2,
     "GroupID": 83,
     "RogueRoomType": 6,
     "RogueRoomID": 121612,
@@ -2448,7 +2448,7 @@
       12
     ],
     "GroupWithContent": {
-      "113": 15901
+      "113": 14901
     },
     "GroupID": 113,
     "RogueRoomType": 7,
@@ -2616,7 +2616,7 @@
       0
     ],
     "GroupWithContent": {
-      "59": 16002
+      "59": 15002
     },
 	"Variation": 2,
     "GroupID": 59,
@@ -2837,7 +2837,7 @@
       0
     ],
     "GroupWithContent": {
-      "59": 17002
+      "59": 15002
     },
 	"Variation": 3,
     "GroupID": 59,
@@ -3021,7 +3021,7 @@
       15
     ],
     "GroupWithContent": {
-      "83": 16901
+      "83": 15901
     },
     "GroupID": 83,
     "RogueRoomType": 7,
@@ -3189,8 +3189,9 @@
       7
     ],
     "GroupWithContent": {
-      "91": 13001
+      "91": 16002
     },
+	"Variation": 2,
     "GroupID": 91,
     "RogueRoomType": 6,
     "RogueRoomID": 131611,
@@ -3409,7 +3410,7 @@
       7
     ],
     "GroupWithContent": {
-      "91": 13001
+      "91": 16002
     },
     "GroupID": 91,
     "RogueRoomType": 6,
@@ -3591,7 +3592,7 @@
       7
     ],
     "GroupWithContent": {
-      "94": 14901
+      "94": 16901
     },
     "GroupID": 94,
     "RogueRoomType": 7,
@@ -5841,7 +5842,7 @@
       "35": 0,
       "36": 18002
     },
-	"Variation": 4,
+	"Variation": 1,
     "GroupID": 35,
     "RogueRoomType": 6,
     "RogueRoomID": 222611,
@@ -6062,7 +6063,7 @@
       "35": 0,
       "36": 18002
     },
-	"Variation": 4,
+	"Variation": 2,
     "GroupID": 35,
     "RogueRoomType": 6,
     "RogueRoomID": 222612,
@@ -6297,8 +6298,9 @@
     "GroupWithContent": {
       "4": 0,
       "5": 0,
-      "6": 19002
+      "6": 18002
     },
+	"Variation": 3,
     "GroupID": 5,
     "RogueRoomType": 6,
     "RogueRoomID": 232612,
@@ -6458,8 +6460,9 @@
     "GroupWithContent": {
       "31": 0,
       "32": 0,
-      "33": 16002
+      "33": 18002
     },
+	"Variation": 4,
     "GroupID": 32,
     "RogueRoomType": 6,
     "RogueRoomID": 221611,
