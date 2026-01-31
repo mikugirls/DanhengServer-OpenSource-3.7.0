@@ -38,6 +38,8 @@ public static class GameData
     #region Activity
 
     public static ActivityConfig ActivityConfig { get; set; } = new();
+	// --- 添加这一行 ---
+    public static Dictionary<int, ActivityLoginConfigExcel> ActivityLoginConfigData { get; private set; } = [];
 
     #region Marble
 

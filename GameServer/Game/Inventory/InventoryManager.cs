@@ -466,60 +466,67 @@ public class InventoryManager(PlayerInstance player) : BasePlayerManager(player)
         }
     }
 
- /// <summary>
-    /// 处理常规奖励表（解决任务/邮件领取时显示总额的问题）
-    /// </summary>
-    public async ValueTask<List<ItemData>> HandleReward(int rewardId, bool notify = false, bool sync = true)
+ 
+/// <summary>
+/// 处理常规奖励表（支持自定义倍率，修复变量名冲突）
+/// </summary>
+public async ValueTask<List<ItemData>> HandleReward(int rewardId, bool notify = false, bool sync = true, int multiplier = 1)
+{
+    GameData.RewardDataData.TryGetValue(rewardId, out var rewardData);
+    if (rewardData == null) return [];
+
+    // 确保倍率有效
+    int m = multiplier <= 0 ? 1 : multiplier;
+
+    List<ItemData> dbItems = [];    // 数据库实时总量列表
+    List<ItemData> resItems = [];   // UI 显示增量列表
+
+    // 1. 遍历并处理普通道具
+    foreach (var item in rewardData.GetItems())
     {
-        GameData.RewardDataData.TryGetValue(rewardId, out var rewardData);
-        if (rewardData == null) return [];
-
-        List<ItemData> dbItems = [];    // 数据库实时总量列表
-        List<ItemData> resItems = [];   // UI 显示增量列表
-
-        // 1. 遍历奖励配置中的所有普通道具
-        foreach (var item in rewardData.GetItems())
+        // 修复：强制转换为 int 以匹配 AddItem 的签名
+        int finalCount = item.Item2 * m; 
+        
+        // 调用 AddItem
+        var rawItem = await AddItem(item.Item1, finalCount, notify: false, sync: false, returnRaw: true);
+        if (rawItem != null)
         {
-            // 同样使用静默模式入库
-            var i = await AddItem(item.Item1, item.Item2, notify: false, sync: false, returnRaw: true);
-            if (i != null)
-            {
-                dbItems.Add(i);
-                // 【核心隔离】克隆增量副本用于返回给客户端
-                var clone = i.Clone();
-                clone.Count = item.Item2; 
-                resItems.Add(clone);
-            }
+            dbItems.Add(rawItem);
+            
+            // 关键修复：克隆一个副本
+            var clone = rawItem.Clone();
+            
+            // 修复 CS0200：确保这里修改的是 ItemData 对象的 Count 属性
+            // 如果报错依然指向这里，请确认 ItemData 定义中 Count 是否有 set 方法
+            clone.Count = finalCount; 
+            
+            resItems.Add(clone);
         }
-
-        // 2. 处理奖励配置中的硬币/星琼 (Hcoin)
-        if (rewardData.Hcoin > 0)
-        {
-            var hCoin = await AddItem(1, rewardData.Hcoin, notify: false, sync: false, returnRaw: true);
-            if (hCoin != null)
-            {
-                dbItems.Add(hCoin);
-                var clone = hCoin.Clone();
-                clone.Count = rewardData.Hcoin;
-                resItems.Add(clone);
-            }
-        }
-
-        // 3. 统一同步：如果需要同步，发送最新的数据库总量
-        if (sync && dbItems.Count > 0)
-        {
-            await Player.SendPacket(new PacketPlayerSyncScNotify(dbItems));
-        }
-
-        // 4. 统一弹窗：如果需要右侧通知，发送克隆的增量
-        if (notify && resItems.Count > 0)
-        {
-            await Player.SendPacket(new PacketScenePlaneEventScNotify(resItems));
-        }
-
-        // 返回增量列表，供 UI 协议包（如结算包）直接调用
-        return resItems; 
     }
+
+    // 2. 处理硬币/星琼 (Hcoin)
+    if (rewardData.Hcoin > 0)
+    {
+        int finalHcoin = rewardData.Hcoin * m;
+        
+        var hCoinRaw = await AddItem(1, finalHcoin, notify: false, sync: false, returnRaw: true);
+        if (hCoinRaw != null)
+        {
+            dbItems.Add(hCoinRaw);
+            
+            var hCoinClone = hCoinRaw.Clone();
+            hCoinClone.Count = finalHcoin;
+            
+            resItems.Add(hCoinClone);
+        }
+    }
+
+    // 3. 统一同步与弹窗
+    if (sync && dbItems.Count > 0) await Player.SendPacket(new PacketPlayerSyncScNotify(dbItems));
+    if (notify && resItems.Count > 0) await Player.SendPacket(new PacketScenePlaneEventScNotify(resItems));
+
+    return resItems; 
+}
   /// <summary>
     /// 处理副本/花萼结算（解决6波掉落固定与里程显示总数问题）
     /// </summary>

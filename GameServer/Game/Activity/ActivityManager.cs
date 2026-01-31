@@ -8,6 +8,7 @@ using EggLink.DanhengServer.GameServer.Game.Player;
 using EggLink.DanhengServer.Proto;
 using EggLink.DanhengServer.Util;
 using EggLink.DanhengServer.GameServer.Server.Packet.Send.Activity; 
+using EggLink.DanhengServer.Database.Inventory;
 namespace EggLink.DanhengServer.GameServer.Game.Activity;
 
 public class ActivityManager : BasePlayerManager
@@ -64,28 +65,26 @@ public class ActivityManager : BasePlayerManager
         catch (Exception ex) { LogDebug($"[配置加载失败] {ex.Message}", true); }
     }
 
-  /// <summary>
-    /// 改良版 ID 纠偏：优先匹配数据库中已有进度的活动
+ /// <summary>
+    /// 获取当前有效的逻辑 ID。
+    /// 既然 activityId 就是模块 ID，我们优先返回原始 ID，
+    /// 如果数据库里存的是旧版 ID 或存在偏差，在这里做转换。
     /// </summary>
-    private uint GetMainId(uint activityId)
-    {
-        uint rawId = activityId > 1000000 ? activityId / 100 : activityId;
-        
-        // 增加安全检查：确保 Data 和 LoginActivityData 不为空
-        if (rawId < 10000 && Data?.LoginActivityData?.LoginDays != null)
-        {
-            var matchedId = Data.LoginActivityData.LoginDays.Keys
-                .FirstOrDefault(k => IsCheckInActivity(k) && Data.LoginActivityData.LoginDays[k] > 0);
-            
-            if (matchedId != 0) return matchedId;
+private uint GetMainId(uint activityId)
+{
+    // 1. 先去配置表找，看看 activityId 是不是某个配置的行 ID
+    var config = GameData.ActivityLoginConfigData.Values.FirstOrDefault(x => (uint)x.ID == activityId);
+    
+    // 如果找到了，就把 activityId 替换成真正的业务模块 ID (如 1001801)
+    uint realModuleId = config != null ? (uint)config.ActivityModuleID : activityId;
 
-            // 兜底：找当前时间生效的第一个签到活动
-            var now = Extensions.GetUnixSec();
-            var active = _localSchedules?.FirstOrDefault(s => now >= s.BeginTime && now <= s.EndTime && IsCheckInActivity(GetMainId((uint)s.ActivityId)));
-            if (active != null) return GetMainId((uint)active.ActivityId);
-        }
-        return rawId;
-    }
+    // 2. 执行常规纠偏 (长 ID 转短 ID)
+    uint shortId = realModuleId > 1000000 ? realModuleId / 100 : realModuleId;
+
+    LogDebug($"[ID链路校验] 客户端输入:{activityId} -> 配置关联:{realModuleId} -> 最终存档Key:{shortId}");
+    
+    return shortId;
+}
 	// 在 ActivityManager 类中添加
 	public async System.Threading.Tasks.Task SyncTrialActivity()
 	{	
@@ -96,12 +95,15 @@ public class ActivityManager : BasePlayerManager
        
     	}
 	}
-    private bool IsCheckInActivity(uint mainId)
-    {
-        if (mainId == 10014) return true;
-        if (mainId < 10018) return false;
-        return (mainId - 10018) % 5 == 0;
-    }
+   /// <summary>
+    /// 修正：只要在配置表里定义的，就是有效的签到模块
+    /// </summary>
+   private bool IsCheckInActivity(uint id)
+{
+    // 同时检查原始 ID 和可能被除以 100 后的短 ID
+    return GameData.ActivityLoginConfigData.Values.Any(x => 
+        (uint)x.ActivityModuleID == id || (uint)x.ActivityModuleID / 100 == id);
+}
 
     public void UpdateLoginDays()
     {
@@ -115,17 +117,35 @@ public class ActivityManager : BasePlayerManager
             var activeSchedules = _localSchedules.Where(s => now >= s.BeginTime && now <= s.EndTime).ToList();
             
             bool updated = false;
+            HashSet<uint> processedInThisTurn = new();
+
             foreach (var schedule in activeSchedules)
             {
-                uint mainId = GetMainId((uint)schedule.ActivityId);
-                if (IsCheckInActivity(mainId))
+                uint moduleId = GetMainId(schedule.ActivityId); // 使用纠偏后的 ID 存入数据库
+
+                if (processedInThisTurn.Contains(moduleId)) continue;
+                processedInThisTurn.Add(moduleId);
+
+                if (IsCheckInActivity(moduleId))
                 {
-                    if (!loginData.LoginDays.ContainsKey(mainId)) loginData.LoginDays[mainId] = 1;
-                    else if (loginData.LoginDays[mainId] < 7) loginData.LoginDays[mainId]++;
-                    updated = true;
-                    LogDebug($"[进度更新] 活动:{mainId}, 当前天数:{loginData.LoginDays[mainId]}");
+                    // 动态获取当前活动的最大奖励天数
+                    var config = GameData.ActivityLoginConfigData.Values.FirstOrDefault(x => (uint)x.ActivityModuleID == moduleId);
+                    int maxDays = config?.RewardList.Count ?? 7;
+
+                    if (!loginData.LoginDays.ContainsKey(moduleId))
+                    {
+                        loginData.LoginDays[moduleId] = 1;
+                        updated = true;
+                    }
+                    else if (loginData.LoginDays[moduleId] < (uint)maxDays)
+                    {
+                        loginData.LoginDays[moduleId]++;
+                        updated = true;
+                    }
+                    LogDebug($"[进度自增] 模块:{moduleId}, 当前天数:{loginData.LoginDays[moduleId]}");
                 }
             }
+
             if (updated)
             {
                 loginData.LastUpdateTick = now;
@@ -134,56 +154,103 @@ public class ActivityManager : BasePlayerManager
         }
     }
 
-    public async Task<(ItemList items, uint panelId, uint retcode, uint finalId)> TakeLoginReward(uint activityId, uint takeDays)
+public async Task<(ItemList items, uint panelId, uint retcode, uint finalId)> TakeLoginReward(uint activityId, uint takeDays)
+{
+    var items = new ItemList();
+    
+    // --- Step 1: 查找配置 (支持 ModuleID 1001801 或 行ID 1003) ---
+    var loginConfig = GameData.ActivityLoginConfigData.Values.FirstOrDefault(x => 
+        (uint)x.ActivityModuleID == activityId || 
+        (uint)x.ID == activityId);
+
+    if (loginConfig == null)
     {
-        var items = new ItemList();
-        uint mainId = GetMainId(activityId);
-        
-        // 使用本地配置或默认 ID
-        uint currentPanelId = _localSchedules?.FirstOrDefault(s => GetMainId((uint)s.ActivityId) == mainId)?.PanelId ?? mainId;
-
-        // 强校验：如果数据依然为空，安全返回
-        if (Data?.LoginActivityData == null) 
-        {
-            LogDebug("[严重错误] 玩家活动数据为空", true);
-            return (items, currentPanelId, 1, mainId);
-        }
-        
-        var loginData = Data.LoginActivityData;
-
-        // 1. 进度校验
-        if (!loginData.LoginDays.TryGetValue(mainId, out var currentDays) || takeDays > currentDays)
-        {
-            LogDebug($"[领取拒绝] ID:{mainId} 进度不足", true);
-            return (items, currentPanelId, 2602, mainId); 
-        }
-
-        // 2. 重复领取校验
-        if (!loginData.TakenRewards.ContainsKey(mainId)) 
-            loginData.TakenRewards[mainId] = new List<uint>();
-
-        if (loginData.TakenRewards[mainId].Contains(takeDays)) 
-        {
-            LogDebug($"[重复拦截] ID:{mainId} 第 {takeDays} 天已领过");
-            return (items, currentPanelId, 2002, mainId); 
-        }
-
-        // ... 后续逻辑保持不变 ...
-        // 3. 奖励计算 (* 10)
-        uint baseCount = takeDays switch { 1=>1, 2=>1, 3=>2, 4=>1, 5=>1, 6=>1, 7=>3, _=>0 };
-        uint finalCount = baseCount * RewardMultiplier;
-
-        if (finalCount > 0 && Player.InventoryManager != null)
-        {
-            items.ItemList_.Add(new Item { ItemId = 102, Num = finalCount });
-            await Player.InventoryManager.AddItem(102, (int)finalCount, notify: true);
-        }
-
-        loginData.TakenRewards[mainId].Add(takeDays);
-        Save();
-
-        return (items, currentPanelId, 0, mainId); 
+        LogDebug($"[Step 1 错误] 配置表找不到 ID 或 ModuleID 为 {activityId}", true);
+        return (items, 0, (uint)Retcode.RetCommonActivityNotOpen, activityId);
     }
+
+    // --- Step 2: 确定数据库 Key ---
+    // 统一通过映射后的 mainId (10018) 操作存档
+    uint mainId = GetMainId(activityId); 
+    
+    LogDebug("================ [领取奖励调试] ================");
+    LogDebug($"[状态] 客户端ID: {activityId} | 匹配Module: {loginConfig.ActivityModuleID} | 数据库Key: {mainId} | 申请天数: {takeDays}");
+
+    var loginData = Data.LoginActivityData;
+    if (loginData == null) return (items, 0, (uint)Retcode.RetPlayerDataError, activityId);
+
+    // --- Step 3: 校验进度 ---
+    if (!loginData.LoginDays.TryGetValue(mainId, out var currentDays))
+    {
+        LogDebug($"[Step 2 错误] 数据库找不到 Key: {mainId} 的进度记录", true);
+        return (items, 0, (uint)Retcode.RetLoginActivityDaysLack, activityId);
+    }
+
+    if (takeDays > currentDays)
+    {
+        LogDebug($"[Step 2 错误] 进度不足！需要 {takeDays} 天，当前仅有 {currentDays} 天", true);
+        return (items, 0, (uint)Retcode.RetLoginActivityDaysLack, activityId);
+    }
+
+    // --- Step 4: 校验重复领取 ---
+    if (!loginData.TakenRewards.ContainsKey(mainId)) loginData.TakenRewards[mainId] = new List<uint>();
+    if (loginData.TakenRewards[mainId].Contains(takeDays))
+    {
+        LogDebug($"[Step 3 错误] 3316：第 {takeDays} 天已领过", true);
+        return (items, 0, (uint)Retcode.RetLoginActivityHasTaken, activityId);
+    }
+
+    // --- Step 5: 奖励索引安全检查 ---
+    int rewardIndex = (int)takeDays - 1;
+    if (rewardIndex < 0 || rewardIndex >= loginConfig.RewardList.Count)
+    {
+        LogDebug($"[Step 4 错误] 数组越界！RewardList 长度只有 {loginConfig.RewardList.Count}", true);
+        return (items, 0, (uint)Retcode.RetReqParaInvalid, activityId);
+    }
+
+    // --- Step 6: 发放奖励 (10倍) ---
+    int rewardId = loginConfig.RewardList[rewardIndex];
+    if (GameData.RewardDataData.TryGetValue(rewardId, out var rewardDetail))
+    {
+        int mult = (int)RewardMultiplier;
+        var rewardItemsToRequest = new List<ItemData>();
+        
+        var rawItems = new[] {
+            (id: rewardDetail.ItemID_1, cnt: rewardDetail.Count_1),
+            (id: rewardDetail.ItemID_2, cnt: rewardDetail.Count_2),
+            (id: rewardDetail.ItemID_3, cnt: rewardDetail.Count_3),
+            (id: rewardDetail.ItemID_4, cnt: rewardDetail.Count_4),
+            (id: rewardDetail.ItemID_5, cnt: rewardDetail.Count_5),
+            (id: rewardDetail.ItemID_6, cnt: rewardDetail.Count_6),
+            (id: rewardDetail.Hcoin > 0 ? 1 : 0, cnt: rewardDetail.Hcoin)
+        };
+
+        foreach (var item in rawItems)
+        {
+            if (item.id <= 0 || item.cnt <= 0) continue;
+            int finalNum = item.cnt * mult;
+            rewardItemsToRequest.Add(new ItemData { ItemId = item.id, Count = finalNum });
+            items.ItemList_.Add(new Item { ItemId = (uint)item.id, Num = (uint)finalNum });
+        }
+
+        if (rewardItemsToRequest.Count > 0 && Player.InventoryManager != null)
+        {
+            await Player.InventoryManager.AddItems(rewardItemsToRequest, notify: true);
+        }
+    }
+
+    // --- Step 7: 更新存档并返回 ---
+    loginData.TakenRewards[mainId].Add(takeDays);
+    Save();
+
+    // 确定返回给客户端的 PanelId，优先匹配 schedule 表
+    uint currentPanelId = _localSchedules?.FirstOrDefault(s => s.ActivityId == activityId || s.PanelId == activityId)?.PanelId ?? activityId;
+    
+    LogDebug("================ [领取奖励成功] ================");
+    
+    // 关键：最后必须返回原始 activityId 匹配客户端请求
+    return (items, currentPanelId, (uint)Retcode.RetSucc, activityId);
+}
 
     private void Save()
     {
@@ -191,22 +258,44 @@ public class ActivityManager : BasePlayerManager
             DatabaseHelper.ToSaveUidList.Add(Player.Uid);
     }
 
-    public GetLoginActivityScRsp GetLoginInfo()
-    {
-        var rsp = new GetLoginActivityScRsp();
-        if (Data?.LoginActivityData == null) return rsp;
-        var loginProtoData = Data.LoginActivityData.ToProto();
-        foreach (var proto in loginProtoData)
-        {
-            var config = _localSchedules?.FirstOrDefault(s => GetMainId((uint)s.ActivityId) == proto.Id);
-            if (config != null) proto.PanelId = (uint)config.PanelId;
-        }
-        rsp.LoginActivityList.AddRange(loginProtoData);
-        return rsp;
-    }
+ public GetLoginActivityScRsp GetLoginInfo()
+{
+    var rsp = new GetLoginActivityScRsp();
+    if (Data?.LoginActivityData == null || _localSchedules == null) return rsp;
 
-    public List<ActivityScheduleData> ToProto()
+    var loginData = Data.LoginActivityData;
+
+    foreach (var schedule in _localSchedules)
     {
-        return _localSchedules ?? new List<ActivityScheduleData>();
+        uint mainId = GetMainId(schedule.ActivityId);
+
+        if (loginData.LoginDays.TryGetValue(mainId, out var days))
+        {
+            var activityProto = new EggLink.DanhengServer.Proto.LoginActivityData 
+            {
+                Id = schedule.ActivityId, 
+                LoginDays = days,
+                PanelId = schedule.PanelId == 0 ? schedule.ActivityId : schedule.PanelId
+            };
+
+            if (loginData.TakenRewards.TryGetValue(mainId, out var takenList))
+            {
+                // 【核心修正】：使用混淆后的字段名 JLHOGGDHMHG
+                activityProto.JLHOGGDHMHG.AddRange(takenList); 
+            }
+
+            rsp.LoginActivityList.Add(activityProto);
+            
+            LogDebug($"[UI同步] ID:{activityProto.Id} | 进度:{days} | 已领天数:[{string.Join(",", activityProto.JLHOGGDHMHG)}]");
+        }
     }
+    return rsp;
+}
+
+    // 将此方法放回 ActivityManager 类中
+public List<ActivityScheduleData> ToProto()
+{
+    // 返回本地加载的配置列表，供 PacketGetActivityScheduleConfigScRsp 使用
+    return _localSchedules ?? new List<ActivityScheduleData>();
+}
 }

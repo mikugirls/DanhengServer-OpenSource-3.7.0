@@ -13,7 +13,8 @@ public class ExpeditionManager : BasePlayerManager
 {
     // 直接引用 PlayerInstance 中初始化好的 Data
     public ExpeditionData Data => Player.ExpeditionData!;
-
+	// 1. 请确保在类开头定义了此常量
+	private const int EXPEDITION_REWARD_MULTIPLIER = 10;
     public ExpeditionManager(PlayerInstance player) : base(player) { }
 
     public async ValueTask Initialize()
@@ -119,81 +120,99 @@ public class ExpeditionManager : BasePlayerManager
     /// <summary>
     /// 领取派遣奖励 (CmdId: 2552) - 完整双重加成版
     /// </summary>
-    public async ValueTask TakeExpeditionReward(uint expeditionId)
+   /// <summary>
+/// 领取派遣奖励 (CmdId: 2552) - 10倍奖励与物理时间跳变修正版
+/// </summary>
+public async ValueTask TakeExpeditionReward(uint expeditionId)
+{
+    // 1. 查找派遣实例
+    var instance = Data.ExpeditionList.FirstOrDefault(x => x.Id == expeditionId);
+    if (instance == null) return;
+
+    // 2. 获取点位配置
+    if (!GameData.ExpeditionDataData.TryGetValue((int)instance.Id, out var config))
+        return;
+
+    // 3. 获取奖励配置
+    var rewardConfig = GameData.ExpeditionIdToRewards[(int)instance.Id]
+        .FirstOrDefault(x => (uint)x.Duration == instance.TotalDuration);
+
+    // --- 核心校验：绝对时间差判定 ---
+    // 使用 Math.Abs 确保无论是 RunAsDate 往后拨(加速)还是往前拨(跳变)，只要跨度够大即可领奖
+    long timeElapsed = Math.Abs(Extensions.GetUnixSec() - instance.StartExpeditionTime);
+    long requiredTime = (long)instance.TotalDuration * 3600;
+
+    if (timeElapsed < requiredTime)
     {
-        // 1. 查找派遣实例
-        var instance = Data.ExpeditionList.FirstOrDefault(x => x.Id == expeditionId);
-        if (instance == null) return;
-
-        // 2. 时间校验
-        if (Extensions.GetUnixSec() < (instance.StartExpeditionTime + instance.TotalDuration))
-            return;
-
-        // 3. 获取点位配置与奖励配置
-        if (!GameData.ExpeditionDataData.TryGetValue((int)instance.Id, out var config))
-            return;
-
-        var rewardConfig = GameData.ExpeditionIdToRewards[(int)instance.Id]
-		.FirstOrDefault(x => (uint)x.Duration == instance.TotalDuration);
-
-		// 2. 时间校验 (注意：因为 TotalDuration 现在是小时，计算结束时间要乘以 3600)
-		if (Extensions.GetUnixSec() < (instance.StartExpeditionTime + (instance.TotalDuration * 3600)))
-		{
-		Console.WriteLine($"[派遣领奖] 时间未到！需等待 {instance.TotalDuration} 小时");
-		return;
-		}
-        
-        if (rewardConfig != null)
+        long remaining = requiredTime - timeElapsed;
+        Console.WriteLine($"[派遣领奖] 时间跨度不足！当前跨度 {timeElapsed}秒，还需 {remaining}秒。");
+        return;
+    }
+    
+    if (rewardConfig != null)
+    {
+        // --- 核心加成判定：命途 + 属性 ---
+        bool hasBonus = false;
+        foreach (var avatarId in instance.AvatarIdList)
         {
-            // --- 核心加成判定：命途 + 属性 ---
-            bool hasBonus = false;
-            foreach (var avatarId in instance.AvatarIdList)
+            if (GameData.AvatarConfigData.TryGetValue((int)avatarId, out var avatarExcel))
             {
-                if (GameData.AvatarConfigData.TryGetValue((int)avatarId, out var avatarExcel))
+                // A. 判定命途加成
+                if (config.BonusBaseTypeList.Count > 0 && 
+                    config.BonusBaseTypeList.Contains(avatarExcel.AvatarBaseType.ToString()))
                 {
-                    // A. 判定命途加成
-                    if (config.BonusBaseTypeList.Count > 0 && 
-                        config.BonusBaseTypeList.Contains(avatarExcel.AvatarBaseType.ToString()))
-                    {
-                        hasBonus = true;
-                        break; 
-                    }
+                    hasBonus = true;
+                    break; 
+                }
 
-                    // B. 判定属性加成
-                    if (config.BonusDamageTypeList.Count > 0 && 
-                        config.BonusDamageTypeList.Contains(avatarExcel.DamageType.ToString()))
-                    {
-                        hasBonus = true;
-                        break;
-                    }
+                // B. 判定属性加成
+                if (config.BonusDamageTypeList.Count > 0 && 
+                    config.BonusDamageTypeList.Contains(avatarExcel.DamageType.ToString()))
+                {
+                    hasBonus = true;
+                    break;
                 }
             }
-
-            // 4. 发放基础奖励
-            var rewardItems = await Player.InventoryManager!.HandleReward(rewardConfig.RewardID, notify: true, sync: true);
-            var rewardProto = new ItemList();
-            rewardProto.ItemList_.AddRange(rewardItems.Select(x => x.ToProto()));
-
-            // 5. 发放额外奖励
-            var extraRewardProto = new ItemList();
-            if (hasBonus && rewardConfig.ExtraRewardID > 0)
-            {
-                var extraItems = await Player.InventoryManager!.HandleReward(rewardConfig.ExtraRewardID, notify: true, sync: true);
-                extraRewardProto.ItemList_.AddRange(extraItems.Select(x => x.ToProto()));
-            }
-
-            // 6. 发送领奖回执
-            await Player.SendPacket(new PacketTakeExpeditionRewardScRsp(expeditionId, rewardProto, extraRewardProto));
         }
 
-        // 7. 【关键】清理数据并持久化
-        Data.ExpeditionList.Remove(instance);
-        Data.TotalFinishedCount++; 
-        DatabaseHelper.ToSaveUidList.SafeAdd(Player.Uid);
+        // 4. 发放基础奖励 (传入 10 倍常量)
+        // 注意：这里会调用我们修复后的 HandleReward(int, bool, bool, int)
+        var rewardItems = await Player.InventoryManager!.HandleReward(
+            rewardConfig.RewardID, 
+            notify: true, 
+            sync: true, 
+            multiplier: EXPEDITION_REWARD_MULTIPLIER);
 
-        // 8. 同步最新状态
-        await SyncExpeditionData();
+        var rewardProto = new ItemList();
+        rewardProto.ItemList_.AddRange(rewardItems.Select(x => x.ToProto()));
+
+        // 5. 发放额外奖励 (同样应用 10 倍常量)
+        var extraRewardProto = new ItemList();
+        if (hasBonus && rewardConfig.ExtraRewardID > 0)
+        {
+            var extraItems = await Player.InventoryManager!.HandleReward(
+                rewardConfig.ExtraRewardID, 
+                notify: true, 
+                sync: true, 
+                multiplier: EXPEDITION_REWARD_MULTIPLIER);
+            
+            extraRewardProto.ItemList_.AddRange(extraItems.Select(x => x.ToProto()));
+        }
+
+        // 6. 发送领奖回执
+        await Player.SendPacket(new PacketTakeExpeditionRewardScRsp(expeditionId, rewardProto, extraRewardProto));
     }
+
+    // 7. 清理数据并持久化
+    Data.ExpeditionList.Remove(instance);
+    Data.TotalFinishedCount++; 
+    DatabaseHelper.ToSaveUidList.SafeAdd(Player.Uid);
+
+    // 8. 同步最新状态（刷新格子）
+    await SyncExpeditionData();
+
+    Console.WriteLine($"[派遣领奖] 成功！点位: {expeditionId}, 物理耗时: {timeElapsed}s, 奖励倍率: {EXPEDITION_REWARD_MULTIPLIER}x");
+}
 
     /// <summary>
     /// 中途取消派遣 (CmdId: 2584)
