@@ -14,7 +14,7 @@ public class GachaData : BaseDatabaseDataHelper
 	[SugarColumn(DefaultValue = "0")]
     public int StandardPityCount { get; set; } = 0; // <--- 新增这个标记
     public bool IsStandardSelected { get; set; } = false;
-
+	public uint PlayerGachaSeed { get; set; } = 0;
     // --- 2. 新手池 (4001) ---
 	[SugarColumn(DefaultValue = "0")]
     public int NewbieGachaCount { get; set; } = 0; // 新手池独立水位

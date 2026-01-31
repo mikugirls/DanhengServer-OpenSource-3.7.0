@@ -30,29 +30,26 @@ public class BannerConfig
     public int EventChance { get; set; } = 50;
 
    public int DoGacha(List<int> goldAvatars, List<int> purpleAvatars, List<int> purpleWeapons, List<int> goldWeapons,
-    List<int> blueWeapons, GachaData data, int uid)
+    List<int> blueWeapons, GachaData data, Random playerRand) // <-- 修改参数：传入持久化随机实例
 {
-    var random = new Random();
-    
-    // --- 1. 根据当前卡池类型，从 GachaData 中精准获取水位 ---
+    // --- 1. 获取水位逻辑 (保持不变) ---
     int pityCount = 0;
     if (this.GachaId == 4001) pityCount = data.NewbiePityCount;
     else if (this.GachaId == 1001) pityCount = data.StandardPityCount;
     else if (GachaType == GachaTypeEnum.AvatarUp) pityCount = data.LastAvatarGachaPity; 
     else if (GachaType == GachaTypeEnum.WeaponUp) pityCount = data.LastWeaponGachaPity;
 
-    // 设置保底参数：武器池 80 满保底，角色池 90
     int currentMaxCount = (GachaType == GachaTypeEnum.WeaponUp) ? 80 : 90;
     int softPityStart5 = (GachaType == GachaTypeEnum.WeaponUp) ? 62 : 72; 
 
-    // --- 2. 独立累加水位 (在判定本次产出前先增加计数) ---
+    // --- 2. 独立累加水位 (保持不变) ---
     if (this.GachaId == 4001) {
         data.NewbiePityCount++;
-        data.NewbieGachaCount++; // 新手池总计 50 次限制
+        data.NewbieGachaCount++; 
     }
     else if (this.GachaId == 1001) {
         data.StandardPityCount++;
-        data.StandardCumulativeCount++; // 常驻/300抽自选进度
+        data.StandardCumulativeCount++; 
     }
     else if (GachaType == GachaTypeEnum.AvatarUp) {
         data.LastAvatarGachaPity++; 
@@ -61,55 +58,58 @@ public class BannerConfig
         data.LastWeaponGachaPity++; 
     }
 
-    data.LastGachaPurpleFailedCount++; // 四星水位是通用的
+    data.LastGachaPurpleFailedCount++; 
 
     // --- 3. 五星判定概率计算 ---
     double currentChance5 = GetRateUpItem5Chance / 1000.0; 
     if (pityCount >= softPityStart5) {
-        // 软保底概率递增：武器池每抽约+7%，角色池每抽约+6%
         currentChance5 += (GachaType == GachaTypeEnum.WeaponUp ? 0.07 : 0.06) * (pityCount - softPityStart5 + 1);
     }
 
     int item;
-    // 判定是否出金 (随机数小于概率，或达到硬保底)
-    if (random.NextDouble() < currentChance5 || pityCount + 1 >= currentMaxCount) {
-        // --- 4. 【核心修复】触发五星后，精准重置对应的水位字段 ---
+    // --- 4. 五星判定：使用 playerRand ---
+    if (playerRand.NextDouble() < currentChance5 || pityCount + 1 >= currentMaxCount) {
         if (this.GachaId == 1001) data.StandardPityCount = 0;
         else if (this.GachaId == 4001) data.NewbiePityCount = 0;
         else if (GachaType == GachaTypeEnum.AvatarUp) data.LastAvatarGachaPity = 0;
         else if (GachaType == GachaTypeEnum.WeaponUp) data.LastWeaponGachaPity = 0;
 
-        // 确定产出并处理大保底逻辑
         if (GachaType == GachaTypeEnum.WeaponUp) {
-            item = GetRateUpItem5(goldWeapons, data.LastWeaponGachaFailed);
-            data.LastWeaponGachaFailed = !RateUpItems5.Contains(item); // 没抽到UP则下次必出
+            // 注意：GetRateUpItem5 内部也需要同步修改为使用 playerRand
+            item = GetRateUpItem5(goldWeapons, data.LastWeaponGachaFailed, playerRand);
+            data.LastWeaponGachaFailed = !RateUpItems5.Contains(item);
         }
         else if (GachaType == GachaTypeEnum.AvatarUp) {
-            item = GetRateUpItem5(goldAvatars, data.LastAvatarGachaFailed);
-            data.LastAvatarGachaFailed = !RateUpItems5.Contains(item); // 没抽到UP则下次必出
+            item = GetRateUpItem5(goldAvatars, data.LastAvatarGachaFailed, playerRand);
+            data.LastAvatarGachaFailed = !RateUpItems5.Contains(item);
         }
         else {
-            item = GetRateUpItem5([.. goldAvatars, .. goldWeapons], false);
+            item = GetRateUpItem5([.. goldAvatars, .. goldWeapons], false, playerRand);
         }
     }
     else {
-        // --- 5. 四星及三星判定逻辑 ---
+        // --- 5. 四星及三星判定：使用 playerRand ---
         double currentChance4 = 0.051; 
         if (data.LastGachaPurpleFailedCount >= 9) currentChance4 = 0.51;
 
-        if (random.NextDouble() < currentChance4 || data.LastGachaPurpleFailedCount >= 10) {
+        if (playerRand.NextDouble() < currentChance4 || data.LastGachaPurpleFailedCount >= 10) {
             data.LastGachaPurpleFailedCount = 0;
-            bool isUp = random.Next(0, 100) < 50 && RateUpItems4.Count > 0;
-            if (isUp) item = RateUpItems4[random.Next(0, RateUpItems4.Count)];
+            
+            // 判定是否为 UP 项
+            bool isUp = playerRand.Next(0, 100) < 50 && RateUpItems4.Count > 0;
+            if (isUp) {
+                item = RateUpItems4[playerRand.Next(0, RateUpItems4.Count)];
+            }
             else {
-                var pool = GachaType == GachaTypeEnum.AvatarUp ? (random.Next(0, 2) == 0 ? purpleAvatars : purpleWeapons) : 
-                          (GachaType == GachaTypeEnum.WeaponUp ? (random.Next(0, 10) < 3 ? purpleAvatars : purpleWeapons) : 
+                var pool = GachaType == GachaTypeEnum.AvatarUp ? (playerRand.Next(0, 2) == 0 ? purpleAvatars : purpleWeapons) : 
+                          (GachaType == GachaTypeEnum.WeaponUp ? (playerRand.Next(0, 10) < 3 ? purpleAvatars : purpleWeapons) : 
                           [.. purpleAvatars, .. purpleWeapons]);
-                item = pool[random.Next(0, pool.Count)];
+                item = pool[playerRand.Next(0, pool.Count)];
             }
         }
         else {
-            item = blueWeapons[random.Next(0, blueWeapons.Count)];
+            // 三星逻辑
+            item = blueWeapons[playerRand.Next(0, blueWeapons.Count)];
         }
     }
     
@@ -191,12 +191,12 @@ public class BannerConfig
         return null;
     }
 
-    public bool IsEvent() => new Random().Next(0, 100) < EventChance;
+   public int GetRateUpItem5(List<int> gold, bool forceUp, Random playerRand)
+{
+    if (IsEvent(playerRand) || forceUp) 
+        return RateUpItems5[playerRand.Next(0, RateUpItems5.Count)];
+    return gold[playerRand.Next(0, gold.Count)];
+}
 
-    public int GetRateUpItem5(List<int> gold, bool forceUp)
-    {
-        var random = new Random();
-        if (IsEvent() || forceUp) return RateUpItems5[random.Next(0, RateUpItems5.Count)];
-        return gold[random.Next(0, gold.Count)];
-    }
+public bool IsEvent(Random playerRand) => playerRand.Next(0, 100) < EventChance;
 }

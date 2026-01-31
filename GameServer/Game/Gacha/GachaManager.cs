@@ -17,7 +17,16 @@ public class GachaManager : BasePlayerManager
     public GachaManager(PlayerInstance player) : base(player)
     {
         GachaData = DatabaseHelper.Instance!.GetInstanceOrCreateNew<GachaData>(player.Uid);
+		
 
+        // --- 新增：初始化玩家专属种子 ---
+        if (GachaData.PlayerGachaSeed == 0)
+        {
+            // 使用 System.Security.Cryptography 生成物理级随机种子
+            GachaData.PlayerGachaSeed = (uint)System.Security.Cryptography.RandomNumberGenerator.GetInt32(1, int.MaxValue);
+        }
+
+      
         if (GachaData.GachaHistory.Count >= 50)
             GachaData.GachaHistory.RemoveRange(0, GachaData.GachaHistory.Count - 50);
 
@@ -134,12 +143,29 @@ public async ValueTask<DoGachaScRsp?> DoGacha(int bannerId, int times)
     // 3. 执行抽卡内核
     var decideItem = GachaData.GachaDecideOrder.Count >= 7 ? GachaData.GachaDecideOrder.GetRange(0, 7) : GachaData.GachaDecideOrder;
     var resultIds = new List<int>();
-    for (var i = 0; i < times; i++)
+	
+	// 【关键修改】：使用玩家持久化种子创建随机实例
+    var playerRand = new Random((int)GachaData.PlayerGachaSeed);
+	
+	for (var i = 0; i < times; i++)
     {
-        var item = banner.DoGacha(decideItem, GetPurpleAvatars(), GetPurpleWeapons(), GetGoldWeapons(), GetBlueWeapons(), GachaData, Player.Uid);
+        // 传入 playerRand，让 BannerConfig 内部使用它进行判定
+        var item = banner.DoGacha(
+            decideItem, 
+            GetPurpleAvatars(), 
+            GetPurpleWeapons(), 
+            GetGoldWeapons(), 
+            GetBlueWeapons(), 
+            GachaData, 
+            playerRand // 这里传入实例
+        );
+        
         if (item == 0) break;
         resultIds.Add(item);
     }
+	
+	// 【重要】：演化种子并存回数据库。这保证了下一次抽卡的起点不可预测。
+    GachaData.PlayerGachaSeed = (uint)playerRand.Next(1, int.MaxValue);
 
     // 4. 处理物品发放与副产物
     var gachaItems = new List<GachaItem>();
@@ -237,7 +263,9 @@ public async ValueTask<DoGachaScRsp?> DoGacha(int bannerId, int times)
 
     public GetGachaInfoScRsp ToProto()
     {
-        var proto = new GetGachaInfoScRsp { GachaRandom = (uint)Random.Shared.Next(1000, 1999) };
+       // 将当前数据库中的 PlayerGachaSeed 发送给客户端
+        // 客户端将根据此种子预渲染抽卡表现
+        var proto = new GetGachaInfoScRsp { GachaRandom = GachaData.PlayerGachaSeed };
         foreach (var banner in GameData.BannersConfig.Banners)
         {
             if (banner.GachaId == 4001 && GachaData.NewbieGachaCount > 50) continue;
