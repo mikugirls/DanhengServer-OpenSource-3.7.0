@@ -40,7 +40,14 @@ public static class GameData
     public static ActivityConfig ActivityConfig { get; set; } = new();
 	// --- 添加这一行 ---
     public static Dictionary<int, ActivityLoginConfigExcel> ActivityLoginConfigData { get; private set; } = [];
-
+	
+	// 存储 ChallengeID -> 配置对象的映射
+	public static Dictionary<uint, FightFestChallengeExcel> FightFestChallengeConfig { get; private set; } = [];
+	// 存储 EventID (StageID) -> 详细配置的映射
+	public static Dictionary<uint, FightFestStageInfoExcel> FightFestStageConfig { get; private set; } = [];
+	public static Dictionary<int, BoxingClubChallengeExcel> BoxingClubChallengeData { get; private set; } = [];
+	public static Dictionary<int, BoxingClubStageGroupExcel> BoxingClubStageGroupData { get; private set; } = [];
+	public static Dictionary<int, BoxingClubStageExcel> BoxingClubStageData { get; private set; } = [];
     #region Marble
 
     public static Dictionary<int, MarbleMatchInfoExcel> MarbleMatchInfoData { get; private set; } = [];

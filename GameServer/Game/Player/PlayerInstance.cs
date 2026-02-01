@@ -45,6 +45,9 @@ using EggLink.DanhengServer.GameServer.Server.Packet.Send.Item;
 using EggLink.DanhengServer.GameServer.Game.Drop;
 using EggLink.DanhengServer.GameServer.Game.Expedition;
 using EggLink.DanhengServer.GameServer.Server.Packet.Send.Expedition;
+// 添加这一行引用
+using EggLink.DanhengServer.GameServer.Game.BoxingClub;
+
 namespace EggLink.DanhengServer.GameServer.Game.Player;
 
 public partial class PlayerInstance(PlayerData data)
@@ -96,6 +99,8 @@ public partial class PlayerInstance(PlayerData data)
     public ActivityManager? ActivityManager { get; private set; }
     public TrainPartyManager? TrainPartyManager { get; private set; }
     public GridFightManager? GridFightManager { get; private set; }
+	public BoxingClubManager? BoxingClubManager { get; private set; }
+	//public FightFestManager? FightFestManager { get; private set;}
 
     #endregion
 	#region Expedition Managers
@@ -207,8 +212,12 @@ public partial class PlayerInstance(PlayerData data)
         TrainPartyManager = new TrainPartyManager(this);
         GridFightManager = new GridFightManager(this);
         OfferingManager = new OfferingManager(this);
+		// --- 添加下面这一行来实例化你的管理器 ---
+		//FightFestManager = new FightFestManager(this);
+        BoxingClubManager = new BoxingClubManager(this);
 		// --- 添加派遣管理器初始化 ---
         ExpeditionManager = new ExpeditionManager(this); //
+		
 		
         PlayerUnlockData = InitializeDatabase<PlayerUnlockData>();
         SceneData = InitializeDatabase<SceneData>();
