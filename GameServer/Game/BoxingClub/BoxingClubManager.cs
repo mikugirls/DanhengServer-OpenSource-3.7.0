@@ -2,78 +2,72 @@ using EggLink.DanhengServer.Data;
 using EggLink.DanhengServer.Data.Excel;
 using EggLink.DanhengServer.Proto;
 using EggLink.DanhengServer.GameServer.Game.Player;
-
 namespace EggLink.DanhengServer.GameServer.Game.BoxingClub;
 
 public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player)
 {
-	public uint LastMatchGroupId { get; set; } = 0;
+    // 用于记录当前正在进行的匹配信息，供进战斗使用
+    public uint LastMatchGroupId { get; set; } = 0;
     public List<uint> LastMatchAvatars { get; set; } = new();
+
     /// <summary>
-    /// 获取所有挑战等级的详细进度，数据来源于 BoxingClubChallenge.json
+    /// 获取挑战列表协议数据重构
+    /// 混淆类 FCIHIJLOMGA 字段业务映射说明:
+    /// Tag 2  (ChallengeId) : 挑战关卡唯一 ID (1-5)
+    /// Tag 15 (HJMGLEMJHKG) : 阶段分组 ID (StageGroupID)，决定了 UI 怪物弱点显示
+    /// Tag 10 (APLKNJEGBKF) : 是否已通关 (IsFinished)，决定关卡是否显示“完成”图标
+    /// Tag 13 (CPGOIPICPJF) : 历史最快回合数 (BestScore)，决定 S/A/B 评价级别
+    /// Tag 9  (NAALCBMBPGC) : 当前进行的轮数/总回合累加 (TotalUsedTurns)
+    /// Tag 8  (LLFOFPNDAFG) : 状态位 (Status)，1 为已开启/解锁
+    /// Tag ?  (MDLACHDKMPH) : 该关卡限定的特殊试用角色池 (Special Avatars)
+    /// Tag ?  (AvatarList)  : 记忆阵容，上次该关卡选中的角色 ID
     /// </summary>
- public List<FCIHIJLOMGA> GetChallengeList()
-{
-    var challengeInfos = new List<FCIHIJLOMGA>();
-
-    // 筛选配置表，只处理 ChallengeID 在 1 到 5 之间的关卡
-    foreach (var config in GameData.BoxingClubChallengeData.Values)
+    public List<FCIHIJLOMGA> GetChallengeList()
     {
-        //if (config.ChallengeID < 1 || config.ChallengeID > 5) 
-        //    continue; 
+        var challengeInfos = new List<FCIHIJLOMGA>();
 
-        var info = new FCIHIJLOMGA
+        foreach (var config in GameData.BoxingClubChallengeData.Values)
         {
-            // Tag 2: 挑战 ID (羽量级到重量级)
-            ChallengeId = (uint)config.ChallengeID, 
-            
-           // 这个是分组（这个对了怪物都显示了）
-            //HJMGLEMJHKG = 10,
-            
-            // Tag 10: APLKNJEGBKF -> 是否已通关
-            APLKNJEGBKF = false, 
-            
-			// Tag 9: NAALCBMBPGC -> 总轮数
-            NAALCBMBPGC = 0,
-
-            // Tag 8: LLFOFPNDAFG -> 状态位 (开启)
-            LLFOFPNDAFG = 1,
-
-            // Tag 14: HNPEAPPMGAA -> 不清楚
-            HNPEAPPMGAA = 0,
-
-            // Tag 13: CPGOIPICPJF -> 排序
-            //CPGOIPICPJF = (uint)config.ChallengeID
-        };
-		// 2. 填充试用阵容 (MDLACHDKMPH)
-        if (config.SpecialAvatarIDList != null)
-        {
-            foreach (var trialId in config.SpecialAvatarIDList)
+            // 1. 基础关卡状态构造
+            var info = new FCIHIJLOMGA
             {
-                info.MDLACHDKMPH.Add(new IJKJJDHLKLB
+                ChallengeId = (uint)config.ChallengeID,
+                HJMGLEMJHKG = (uint)config.StageGroupID, // 必填：否则怪物弱点界面不显示
+                APLKNJEGBKF = false, // TODO: 从数据库读取 bool (HasFinished)
+                CPGOIPICPJF = 0,     // 历史最快回合数：默认0表示无记录
+                NAALCBMBPGC = 0,     // 活动进度回合数
+                LLFOFPNDAFG = 1,     // 开启状态
+                HNPEAPPMGAA = 0      // 预留占位
+            };
+
+            // 2. 注入限定试用角色 (解决“离队/看不到人”的关键)
+            // 必须把 SpecialAvatarIDList 映射到混淆列表 MDLACHDKMPH
+            if (config.SpecialAvatarIDList != null)
+            {
+                foreach (var trialId in config.SpecialAvatarIDList)
                 {
-                    AvatarId = trialId, 
-                    AvatarType = AvatarType.AvatarTrialType 
-                });
+                    info.MDLACHDKMPH.Add(new IJKJJDHLKLB
+                    {
+                        AvatarId = (uint)trialId,
+                        // 拳击俱乐部限定角色通常使用 AvatarLimitType(2)
+                        AvatarType = AvatarType.AvatarLimitType 
+                    });
+                }
             }
-        }
-		challengeInfos.Add(info);
-       // 3. 【解决你的问题】同步上次使用的队伍
-        // 如果你需要显示“上次队伍”，需要在这里填充 AvatarList
-        if (LastMatchAvatars.Count > 0 && LastMatchGroupId == (uint)config.ChallengeID)
-        {
-            foreach (var id in LastMatchAvatars)
-            {
-                // 注意：这里需要根据你的 Proto 结构添加，通常是 uint 列表
-                info.AvatarList.Add(id); 
-            }
-        }
-     }
-		
 
-        
-		return challengeInfos;
+            // 3. 记忆阵容回显 (可选逻辑)
+            // 如果玩家上次打过该关卡且保存了阵容，客户端会自动勾选这几个人
+            if (LastMatchAvatars.Count > 0 && LastMatchGroupId == (uint)config.ChallengeID)
+            {
+                info.AvatarList.AddRange(LastMatchAvatars);
+            }
+
+            challengeInfos.Add(info);
+        }
+
+        return challengeInfos;
     }
+}
 
     
-}
+
