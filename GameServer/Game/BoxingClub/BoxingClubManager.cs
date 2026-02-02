@@ -116,10 +116,11 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
         {
             int displayCount = groupConfig.DisplayEventIDList?.Count ?? 0;
             if (displayCount > 0)
-            {
-                randomIndex = (uint)new Random().Next(1, displayCount + 1);
-                targetEventId = (uint)groupConfig.DisplayEventIDList[(int)randomIndex - 1];
-            }
+			{
+    		randomIndex = (uint)new Random().Next(1, displayCount + 1);
+    		// 在这里加个 ! 告诉编译器你确定这个列表此时已加载
+    		targetEventId = (uint)groupConfig.DisplayEventIDList![(int)randomIndex - 1];
+			}
         }
 
         this.CurrentChallengeId = req.ChallengeId;
