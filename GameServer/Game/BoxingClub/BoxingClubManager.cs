@@ -35,17 +35,18 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
     public List<uint> LastMatchAvatars { get; set; } = new();
 
     /// <summary>
-    /// 获取挑战列表协议数据重构
+    /// 获取挑战列表协议数据重构 (基于暴力测试截图修正版)
     /// 混淆类 FCIHIJLOMGA 字段业务映射说明:
-    /// Tag 2  (ChallengeId)  : 关卡 ID (羽量级/重量级等)。
-    /// Tag 4  (HJMGLEMJHKG)  : 【关键】对手位置索引 (1-based)。填 1 就是第一个怪，填 10 就是第十个。
-    /// Tag 1  (HLIBIJFHHPG)  : 【核心】本次匹配到的 EventID 列表 (repeated uint)。
-    /// Tag 10 (APLKNJEGBKF)  : 是否已通关 (IsFinished)。
-    /// Tag 13 (CPGOIPICPJF)  : 历史最快回合数 (MinRounds)，决定评价等级。
-    /// Tag 9  (NAALCBMBPGC)  : 当前挑战实时累计回合数 (TotalUsedTurns)。
-    /// Tag 8  (LLFOFPNDAFG)  : 开启状态 (Status)，填 1 解锁。
-    /// Tag 6  (MDLACHDKMPH)  : 限定试用角色池 (SpecialAvatarList)，解决选人界面无头像。
-    /// Tag 3  (AvatarList)   : 选人记忆列表 (SelectedAvatars)，解决已选角色离队。
+    /// Tag 1  (HLIBIJFHHPG)  : 【核心】本次匹配到的 EventID 列表 (repeated uint)。必须下发全量(通常为4个)，否则转盘无法渲染或点击匹配无效。
+    /// Tag 2  (ChallengeId)  : 关卡 ID (羽量级/轻量级等)。
+    /// Tag 3  (AvatarList)   : 选人记忆列表 (SelectedAvatars)。解决已选角色离队及记录上次出战阵容。
+    /// Tag 4  (HJMGLEMJHKG)  : 【关键】对手位置索引 (1-based)。对应配置表 DisplayIndexList，控制光圈停在转盘哪个物理坑位。
+    /// Tag 6  (MDLACHDKMPH)  : 限定试用角色池 (SpecialAvatarList)。解决选人界面无官方提供角色的头像问题。
+    /// Tag 8  (LLFOFPNDAFG)  : 挑战状态机 (Status)。1:未开始(显示开始挑战), 2:进行中(显示继续挑战), 3:已通关(与Tag 10配合显示大勾)。
+    /// Tag 9  (NAALCBMBPGC)  : 累计轮次数显示 (TotalRoundsDisplay)。UI顶部显示的“累计轮次数”数值，非实时回合。
+    /// Tag 10 (APLKNJEGBKF)  : 通关标志 (IsFinished)。控制卡片上是否渲染“完成”大对勾。
+    /// Tag 13 (CPGOIPICPJF)  : 历史最佳记录 (BestRecord)。决定UI顶部显示的 Rank 排名数字或最高评价。
+    /// Tag 14 (HNPEAPPMGAA)  : 【修正】当前挑战进度 (CurrentProgress)。控制 UI 匹配界面显示的 "X/4" 进度文本，优先级高于通关勾选。
     /// </summary>
     public List<FCIHIJLOMGA> GetChallengeList()
     {
