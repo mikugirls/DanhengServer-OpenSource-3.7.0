@@ -7,7 +7,7 @@ using EggLink.DanhengServer.GameServer.Game.Scene;
 using EggLink.DanhengServer.Database.Avatar;                 
 using EggLink.DanhengServer.GameServer.Server.Packet.Send.Scene;
 using EggLink.DanhengServer.Enums.Avatar;
-using EggLink.DanhengServer.Util;
+using EggLink.DanhengServer.Util; // 确保引用了 Logger 所在的命名空间
 
 namespace EggLink.DanhengServer.GameServer.Game.BoxingClub;
 
@@ -15,6 +15,9 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
 {
     // --- 全局调试日志开关 ---
     public static bool EnableLog = true; 
+
+    // 初始化自定义 Logger 实例，模块名为 BoxingClub
+    private static readonly Logger _log = new("BoxingClub");
 
     // 当前挑战的轮次下标 (0, 1, 2...) -> 对应 StageGroupList 的索引
     public int CurrentRoundIndex { get; set; } = 0;
@@ -30,11 +33,6 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
 
     // 记忆阵容：存储玩家选中的英雄 ID 列表，用于解决“角色离队”Bug
     public List<uint> LastMatchAvatars { get; set; } = new();
-
-    private void Log(string message)
-    {
-        if (EnableLog) LogUtil.Debug($"[BoxingClub] {message}");
-    }
 
     /// <summary>
     /// 获取挑战列表协议数据重构
@@ -52,20 +50,19 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
     public List<FCIHIJLOMGA> GetChallengeList()
     {
         var challengeInfos = new List<FCIHIJLOMGA>();
-        Log($"Syncing challenge list for UID: {Player?.Uid}");
+        if (EnableLog) _log.Debug($"Syncing challenge list for UID: {Player?.Uid}");
 
         foreach (var config in GameData.BoxingClubChallengeData.Values)
         {
             var info = new FCIHIJLOMGA
             {
                 ChallengeId = (uint)config.ChallengeID,
-                LLFOFPNDAFG = 1,     // 默认开启状态
-                APLKNJEGBKF = false, // TODO: 从数据库读取实际状态
+                LLFOFPNDAFG = 1,     
+                APLKNJEGBKF = false, 
                 CPGOIPICPJF = 0,     
                 NAALCBMBPGC = 0,     
             };
 
-            // 1. 注入试用角色池 (MDLACHDKMPH 对应 IJKJJDHLKLB)
             if (config.SpecialAvatarIDList != null)
             {
                 foreach (var trialId in config.SpecialAvatarIDList)
@@ -78,7 +75,6 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
                 }
             }
 
-            // 2. 状态同步：回显随机结果和记忆阵容
             if (CurrentChallengeId == (uint)config.ChallengeID)
             {
                 info.HJMGLEMJHKG = CurrentOpponentIndex; 
@@ -100,12 +96,10 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
         return challengeInfos;
     }
 
-    /// <summary>
-    /// 处理匹配请求并构造回显快照
-    /// </summary>
     public FCIHIJLOMGA ProcessMatchRequest(MatchBoxingClubOpponentCsReq req)
     {
-        Log($"Matching opponent for Challenge {req.ChallengeId}...");
+        if (EnableLog) _log.Info($"Matching opponent for Challenge {req.ChallengeId}...");
+        
         uint selectedGroupId = 0;
         uint randomIndex = 1;
         uint targetEventId = 0;
@@ -133,7 +127,7 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
         this.CurrentOpponentIndex = randomIndex;
         this.LastMatchAvatars = req.AvatarList.ToList();
 
-        Log($"Match Success: EventID {targetEventId}, Index {randomIndex}");
+        if (EnableLog) _log.Info($"Match Success: EventID {targetEventId}, Index {randomIndex}");
 
         var snapshot = new FCIHIJLOMGA
         {
@@ -149,7 +143,6 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
             snapshot.HLIBIJFHHPG.Add(targetEventId); 
         }
 
-        // 手动转换以解决混淆类冲突
         foreach (var item in req.MDLACHDKMPH)
         {
             snapshot.MDLACHDKMPH.Add(new IJKJJDHLKLB
@@ -163,21 +156,17 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
         return snapshot;
     }
 
-    /// <summary>
-    /// 进入战斗位面逻辑
-    /// </summary>
     public async ValueTask EnterBoxingClubStage(uint challengeId)
     {
-        // 修正 CS8602 警告
         if (Player?.SceneInstance == null) return;
         if (this.CurrentChallengeId != challengeId || this.CurrentMatchEventId == 0) return;
 
         int actualStageId = (int)(this.CurrentMatchEventId * 10) + Player.Data.WorldLevel;
-        Log($"Starting Battle: StageID {actualStageId}");
+        if (EnableLog) _log.Info($"Starting Battle: StageID {actualStageId}");
         
         if (!GameData.StageConfigData.TryGetValue(actualStageId, out var stageConfig))
         {
-            Log($"Error: StageID {actualStageId} not found!");
+            if (EnableLog) _log.Error($"StageID {actualStageId} not found!");
             return;
         }
 
@@ -210,17 +199,16 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
         battleInstance.AvatarInfo = avatarList;
         Player.BattleInstance = battleInstance;
         
-        // 修正 CS4014：必须 await
         await Player.SendPacket(new PacketSceneEnterStageScRsp(battleInstance));
         
         Player.SceneInstance.OnEnterStage();
-        Player.QuestManager?.OnBattleStart(battleInstance);
-        Log("Stage packet sent, entering battle scene...");
+        Player.QuestManager!.OnBattleStart(battleInstance);
+        if (EnableLog) _log.Debug("Stage packet sent, entering battle scene...");
     }
 
     public void AdvanceNextRound()
     {
-        Log($"AdvanceRound: From {CurrentRoundIndex} to {CurrentRoundIndex + 1}");
+        if (EnableLog) _log.Info($"AdvanceRound: From {CurrentRoundIndex} to {CurrentRoundIndex + 1}");
         CurrentRoundIndex++;
         CurrentMatchEventId = 0;
         CurrentOpponentIndex = 0;
