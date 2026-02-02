@@ -201,9 +201,9 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
         Player.BattleInstance = battleInstance;
         
         await Player.SendPacket(new PacketSceneEnterStageScRsp(battleInstance));
+        Player.SceneInstance?.OnEnterStage();
+		Player.QuestManager?.OnBattleStart(battleInstance);
         
-        Player.SceneInstance.OnEnterStage();
-        Player.QuestManager!.OnBattleStart(battleInstance);
         if (EnableLog) _log.Debug("Stage packet sent, entering battle scene...");
     }
 
