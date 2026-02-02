@@ -2,11 +2,12 @@ using EggLink.DanhengServer.Data;
 using EggLink.DanhengServer.Data.Excel;
 using EggLink.DanhengServer.Proto;
 using EggLink.DanhengServer.GameServer.Game.Player;
-using EggLink.DanhengServer.GameServer.Game.Battle;            // 解决 BattleInstance 引用
-using EggLink.DanhengServer.GameServer.Game.Scene.Entity;       // 解决 AvatarSceneInfo 引用
-using EggLink.DanhengServer.Database.Avatar;                  // 解决 FormalAvatarInfo / BaseAvatarInfo 引用
-using EggLink.DanhengServer.GameServer.Server.Packet.Send.Scene; // 解决 PacketSceneEnterStageScRsp 引用
-using EggLink.DanhengServer.Enums.Avatar;                     // 解决 AvatarType 引用
+using EggLink.DanhengServer.GameServer.Game.Battle;
+using EggLink.DanhengServer.GameServer.Game.Scene;            // 核心：解决 AvatarSceneInfo 引用
+using EggLink.DanhengServer.Database.Avatar;                 // 核心：解决 BaseAvatarInfo / FormalAvatarInfo 引用
+using EggLink.DanhengServer.GameServer.Server.Packet.Send.Scene;
+using EggLink.DanhengServer.GameServer.Server.Packet.Send.BoxingClub;
+using EggLink.DanhengServer.Enums.Avatar;
 
 namespace EggLink.DanhengServer.GameServer.Game.BoxingClub;
 
@@ -136,7 +137,7 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
             snapshot.HLIBIJFHHPG.Add(targetEventId); 
         }
 
-        // 【解决类型冲突】手动转换 RepeatedField 集合
+        // 【解决类型冲突】手动转换 RepeatedField 集合，确保镜像阵容生效
         foreach (var item in req.MDLACHDKMPH)
         {
             snapshot.MDLACHDKMPH.Add(new IJKJJDHLKLB
@@ -155,6 +156,8 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
     /// </summary>
     public async ValueTask EnterBoxingClubStage(uint challengeId)
     {
+        // 消除 CS8602 警告并校验匹配状态
+        if (Player?.SceneInstance == null) return;
         if (this.CurrentChallengeId != challengeId || this.CurrentMatchEventId == 0) return;
 
         // 公式：StageID = EventID * 10 + 均衡等级
@@ -162,7 +165,7 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
         
         if (!GameData.StageConfigData.TryGetValue(actualStageId, out var stageConfig)) return;
 
-        // 修正 BattleInstance 初始化
+        // 初始化战斗实例
         BattleInstance battleInstance = new(Player, Player.LineupManager!.GetCurLineup()!, new List<StageConfigExcel> { stageConfig })
         {
             WorldLevel = Player.Data.WorldLevel,
@@ -175,30 +178,31 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
         var avatarList = new List<AvatarSceneInfo>();
         foreach (var id in LastMatchAvatars)
         {
-            // 利用 BaseAvatarInfo 统一处理 formal 和 trial
+            // 利用 BaseAvatarInfo 统一处理 formal 和 trial，解决类型转换报错
             BaseAvatarInfo? avatarData = (BaseAvatarInfo?)Player.AvatarManager!.GetFormalAvatar((int)id) ?? 
                                          Player.AvatarManager!.GetTrialAvatar((int)id);
 
             if (avatarData != null)
             {
-                // 判定类型
+                // 根据类身份判定 AvatarType，用于 AvatarSceneInfo 构造
                 AvatarType type = (avatarData is SpecialAvatarInfo) ? AvatarType.AvatarTrialType : AvatarType.AvatarFormalType;
 
-                // 修正：利用 avatarData.ToProto() 生成数据源，解决找不到 AvatarInfo 的报错
-                avatarList.Add(new AvatarSceneInfo(avatarData.ToProto(), type, Player)
+                // 核心修复：根据底层构造函数定义，直接传入 BaseAvatarInfo 实例
+                var sceneInfo = new AvatarSceneInfo(avatarData, type, Player)
                 {
-                    EntityId = ++Player.SceneInstance!.LastEntityId 
-                });
+                    EntityId = ++Player.SceneInstance.LastEntityId 
+                };
+                avatarList.Add(sceneInfo);
             }
         }
         
         battleInstance.AvatarInfo = avatarList;
         Player.BattleInstance = battleInstance;
         
-        // 发送 PacketSceneEnterStageScRsp
+        // 发送切场包
         await Player.SendPacket(new PacketSceneEnterStageScRsp(battleInstance));
         
-        Player.SceneInstance?.OnEnterStage();
+        Player.SceneInstance.OnEnterStage();
         Player.QuestManager!.OnBattleStart(battleInstance);
     }
 
