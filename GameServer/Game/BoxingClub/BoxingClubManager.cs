@@ -75,6 +75,43 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
 
         return challengeInfos;
     }
+    /// <summary>
+    /// 处理匹配请求并构造回显快照
+    /// 混淆字段映射：
+    /// HJMGLEMJHKG (Tag 15): 匹配结果索引 (1-based)
+    /// MDLACHDKMPH (Tag 11): 选中的试用角色列表 (IJKJJDHLKLB)
+    /// AvatarList  (Tag 6) : 选中的全员 ID 列表
+    /// </summary>
+    public FCIHIJLOMGA ProcessMatchRequest(MatchBoxingClubOpponentCsReq req)
+    {
+        // 1. 执行随机逻辑：产生 1-10 的随机索引，打破“永远第十个怪”
+        uint selectedIndex = (uint)new Random().Next(1, 11);
+
+        // 2. 持久化数据到 Manager，供后续 StartBattle 提取
+        this.LastChallengeId = req.ChallengeId;
+        this.LastMatchOpponentIndex = selectedIndex;
+        this.LastMatchAvatars = req.AvatarList.ToList();
+
+        // 3. 构造回显快照 (Snapshot)
+        var snapshot = new FCIHIJLOMGA
+        {
+            ChallengeId = req.ChallengeId,
+            HJMGLEMJHKG = selectedIndex, // 下发随机结果
+            NAALCBMBPGC = 0,             // 初始回合数
+            APLKNJEGBKF = false,         // 通关状态
+            LLFOFPNDAFG = 1,             // 激活状态
+            HNPEAPPMGAA = 0
+        };
+
+        // 4. 【核心修复】直接镜像传回客户端发送的试用角色列表
+        // 客户端发什么，我们就填什么传回去，这样选人界面才不会“离队”
+        snapshot.MDLACHDKMPH.AddRange(req.MDLACHDKMPH);
+
+        // 5. 【核心修复】直接镜像传回客户端发送的全员阵容列表
+        snapshot.AvatarList.AddRange(req.AvatarList);
+
+        return snapshot;
+    }
 }
 
     
