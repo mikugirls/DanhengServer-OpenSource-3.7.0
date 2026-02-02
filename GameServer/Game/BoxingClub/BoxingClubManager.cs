@@ -164,30 +164,51 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
     /// 公式 1: StageID = CurrentMatchEventId * 10 + WorldLevel
     /// 公式 2: MonsterLevel = 10 + WorldLevel * 10
     /// </summary>
-    public SceneBattleInfo? StartBattle(uint challengeId)
+    public async ValueTask EnterBoxingClubStage(uint challengeId)
+{
+    // 1. 校验
+    if (this.CurrentChallengeId != challengeId || this.CurrentMatchEventId == 0) return;
+
+    // 2. 【核心公式】StageID = EventID * 10 + 均衡等级
+    int actualStageId = (int)(this.CurrentMatchEventId * 10) + Player.Data.WorldLevel;
+    
+    // 3. 获取 Stage 配置
+    if (!GameData.StageConfigData.TryGetValue(actualStageId, out var stageConfig)) return;
+
+    // 4. 初始化 BattleInstance
+    // 此时传入计算好的 stageConfig，Stages 列表就不是空的了
+    BattleInstance battleInstance = new(Player, Player.LineupManager!.GetCurLineup()!, [stageConfig])
     {
-        // 1. 状态校验：确保是当前匹配的关卡且有 EventID
-        if (this.CurrentChallengeId != challengeId || this.CurrentMatchEventId == 0)
+        WorldLevel = Player.Data.WorldLevel,
+        EventId = (int)this.CurrentMatchEventId,
+        CustomLevel = 10 + (Player.Data.WorldLevel * 10), // 怪物等级公式
+        MappingInfoId = 0, // 严禁走 MappingInfo 逻辑
+        StaminaCost = 0
+    };
+
+    // 5. 注入匹配时选好的 4 人阵容 (解决离队 Bug)
+    var avatarList = new List<AvatarSceneInfo>();
+    foreach (var id in LastMatchAvatars)
+    {
+        BaseAvatarInfo? avatarData = (BaseAvatarInfo?)Player.AvatarManager!.GetFormalAvatar((int)id) ?? 
+                                     Player.AvatarManager!.GetTrialAvatar((int)id);
+        if (avatarData != null)
         {
-            return null;
+            avatarList.Add(new AvatarSceneInfo(avatarData.AvatarInfo, avatarData.AvatarType, Player)
+            {
+                EntityId = ++Player.SceneInstance!.LastEntityId 
+            });
         }
-
-        // 2. 使用你的核心公式计算 StageID
-        // 均衡等级 = player.WorldLevel
-        uint actualStageId = (this.CurrentMatchEventId * 10) + player.WorldLevel;
-
-        // 3. 计算怪物等级
-        uint monsterLevel = 10 + (player.WorldLevel * 10);
-
-        // 4. 调用战斗引擎构建 SceneBattleInfo
-        // 传入 LastMatchAvatars 保证阵容正确
-        var battleInfo = player.BattleManager.CreateBattle(
-            actualStageId, 
-            this.LastMatchAvatars, 
-            monsterLevel, 
-            this.CurrentMatchEventId // 注入 EventID 以开启战斗内的活动机制
-        );
-
-        return battleInfo;
     }
+    battleInstance.AvatarInfo = avatarList;
+
+    // 6. 挂载并发送你说的那个 ScRsp
+    Player.BattleInstance = battleInstance;
+    
+    // 【关键步骤】发送包含 BattleInfo 的 PacketSceneEnterStageScRsp
+    await Player.SendPacket(new PacketSceneEnterStageScRsp(battleInstance));
+
+    // 触发 Quest 等系统监听
+    Player.QuestManager!.OnBattleStart(battleInstance);
+}
 }
