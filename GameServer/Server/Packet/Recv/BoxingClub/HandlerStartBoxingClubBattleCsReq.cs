@@ -15,16 +15,12 @@ public class HandlerStartBoxingClubBattleCsReq : Handler
         var req = StartBoxingClubBattleCsReq.Parser.ParseFrom(data);
         var player = connection.Player!;
 
-        // 逻辑全部下沉到 Manager，直接返回构建好的战斗信息
-        var sceneBattleInfo = player.BoxingClubManager.StartBattle(req.ChallengeId);
-
-        if (sceneBattleInfo != null)
-        {
-            await connection.SendPacket(new PacketStartBoxingClubBattleScRsp((uint)Retcode.RetSucc, sceneBattleInfo));
-        }
-        else
-        {
-            await connection.SendPacket(new PacketStartBoxingClubBattleScRsp((uint)Retcode.RetBoxingClubChallengeNotOpen));
-        }
+        // 调用 Manager 内部封装的位面进入逻辑
+        // 内部会计算 StageID = EventID * 10 + WorldLevel
+        // 并通过 PacketSceneEnterStageScRsp 发送 BattleInfo
+        await player.BoxingClubManager.EnterBoxingClubStage(req.ChallengeId);
+        
+        // 注意：StartBoxingClubBattleScRsp 也要发一个，用来关掉 UI 的 Loading 或触发逻辑
+        await connection.SendPacket(new PacketStartBoxingClubBattleScRsp((uint)Retcode.RetSucc));
     }
 }
