@@ -2,10 +2,12 @@ using EggLink.DanhengServer.Data;
 using EggLink.DanhengServer.Data.Excel;
 using EggLink.DanhengServer.Proto;
 using EggLink.DanhengServer.GameServer.Game.Player;
-using EggLink.DanhengServer.GameServer.Game.Battle;      // 解决 BattleInstance
-using EggLink.DanhengServer.GameServer.Game.Scene.Entity; // 解决 AvatarSceneInfo
-using EggLink.DanhengServer.Database.Avatar;            // 解决 BaseAvatarInfo
-using EggLink.DanhengServer.GameServer.Server.Packet.Send.Scene; // 解决 PacketSceneEnterStageScRsp
+using EggLink.DanhengServer.GameServer.Game.Battle;            // 解决 BattleInstance 引用
+using EggLink.DanhengServer.GameServer.Game.Scene.Entity;       // 解决 AvatarSceneInfo 引用
+using EggLink.DanhengServer.Database.Avatar;                  // 解决 FormalAvatarInfo 引用
+using EggLink.DanhengServer.GameServer.Server.Packet.Send.Scene; // 解决 PacketSceneEnterStageScRsp 引用
+using EggLink.DanhengServer.Enums.Avatar;                     // 解决 AvatarType 引用
+
 namespace EggLink.DanhengServer.GameServer.Game.BoxingClub;
 
 public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player)
@@ -29,14 +31,14 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
     /// 获取挑战列表协议数据重构
     /// 混淆类 FCIHIJLOMGA 字段业务映射说明:
     /// Tag 2  (ChallengeId)  : 关卡 ID (羽量级/重量级等)。
-    /// Tag 15 (HJMGLEMJHKG)  : 【关键】对手位置索引 (1-based)。填 1 就是第一个怪，填 10 就是第十个。
-    /// Tag 12 (HLIBIJFHHPG)  : 【核心】本次匹配到的 EventID 列表 (repeated uint)。
+    /// Tag 4  (HJMGLEMJHKG)  : 【关键】对手位置索引 (1-based)。填 1 就是第一个怪，填 10 就是第十个。
+    /// Tag 1  (HLIBIJFHHPG)  : 【核心】本次匹配到的 EventID 列表 (repeated uint)。
     /// Tag 10 (APLKNJEGBKF)  : 是否已通关 (IsFinished)。
     /// Tag 13 (CPGOIPICPJF)  : 历史最快回合数 (MinRounds)，决定评价等级。
     /// Tag 9  (NAALCBMBPGC)  : 当前挑战实时累计回合数 (TotalUsedTurns)。
     /// Tag 8  (LLFOFPNDAFG)  : 开启状态 (Status)，填 1 解锁。
-    /// Tag 11 (MDLACHDKMPH)  : 限定试用角色池 (SpecialAvatarList)，解决选人界面无头像。
-    /// Tag 6  (AvatarList)   : 选人记忆列表 (SelectedAvatars)，解决已选角色离队。
+    /// Tag 6  (MDLACHDKMPH)  : 限定试用角色池 (SpecialAvatarList)，解决选人界面无头像。
+    /// Tag 3  (AvatarList)   : 选人记忆列表 (SelectedAvatars)，解决已选角色离队。
     /// </summary>
     public List<FCIHIJLOMGA> GetChallengeList()
     {
@@ -48,12 +50,12 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
             {
                 ChallengeId = (uint)config.ChallengeID,
                 LLFOFPNDAFG = 1,     // 默认开启状态
-                APLKNJEGBKF = false, // TODO: 从持久化数据库读取
-                CPGOIPICPJF = 0,     // 历史最高评价回合数
-                NAALCBMBPGC = 0,     // 当前已消耗回合数
+                APLKNJEGBKF = false, // TODO: 从数据库读取实际状态
+                CPGOIPICPJF = 0,     
+                NAALCBMBPGC = 0,     
             };
 
-            // 1. 注入试用角色池 (让选人界面能看到那些带“试”字的角色)
+            // 1. 注入试用角色池 (MDLACHDKMPH 必须 new IJKJJDHLKLB)
             if (config.SpecialAvatarIDList != null)
             {
                 foreach (var trialId in config.SpecialAvatarIDList)
@@ -61,24 +63,21 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
                     info.MDLACHDKMPH.Add(new IJKJJDHLKLB
                     {
                         AvatarId = (uint)trialId,
-                        AvatarType = AvatarType.AvatarLimitType // 必须填 2
+                        AvatarType = AvatarType.AvatarLimitType 
                     });
                 }
             }
 
-            // 2. 状态同步：如果该关卡正在进行中，回显随机结果和记忆阵容
+            // 2. 状态同步：回显随机结果和记忆阵容
             if (CurrentChallengeId == (uint)config.ChallengeID)
             {
-                // 回显当前轮次随机到的 Display 索引
                 info.HJMGLEMJHKG = CurrentOpponentIndex; 
                 
-                // 回显具体的 EventID 列表，确保 UI 弱点与战斗一致
                 if (CurrentMatchEventId != 0)
                 {
                     info.HLIBIJFHHPG.Add(CurrentMatchEventId);
                 }
                 
-                // 【核心修复】将选中的 4 个英雄 ID 塞回列表，UI 才不会显示“离队”
                 if (LastMatchAvatars.Count > 0)
                 {
                     info.AvatarList.AddRange(LastMatchAvatars);
@@ -100,7 +99,6 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
         uint randomIndex = 1;
         uint targetEventId = 0;
 
-        // 1. 动态寻组：根据当前轮次 CurrentRoundIndex (0, 1, 2...) 找到对应的 StageGroupID
         if (GameData.BoxingClubChallengeData.TryGetValue((int)req.ChallengeId, out var config))
         {
             if (config.StageGroupList != null && CurrentRoundIndex < config.StageGroupList.Count)
@@ -109,43 +107,36 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
             }
         }
 
-        // 2. 动态随机：在 DisplayEventIDList 里执行随机抽选
         if (selectedGroupId != 0 && GameData.BoxingClubStageGroupData.TryGetValue((int)selectedGroupId, out var groupConfig))
         {
-            // 基于客户端展示池 (DisplayEventIDList) 的长度进行随机
             int displayCount = groupConfig.DisplayEventIDList?.Count ?? 0;
             if (displayCount > 0)
             {
-                // 生成 1 到 displayCount 之间的随机索引
                 randomIndex = (uint)new Random().Next(1, displayCount + 1);
-                // 提取该索引对应的真实 EventID (用于战斗加载)
                 targetEventId = (uint)groupConfig.DisplayEventIDList[(int)randomIndex - 1];
             }
         }
 
-        // 3. 记录本次匹配的快照状态
         this.CurrentChallengeId = req.ChallengeId;
         this.CurrentMatchEventId = targetEventId;
         this.CurrentOpponentIndex = randomIndex;
         this.LastMatchAvatars = req.AvatarList.ToList();
 
-        // 4. 构造 ScRsp 回传快照
         var snapshot = new FCIHIJLOMGA
         {
             ChallengeId = req.ChallengeId,
-            HJMGLEMJHKG = randomIndex, // 告诉客户端：显示 Display 列表里的第 X 个对手
+            HJMGLEMJHKG = randomIndex,
             NAALCBMBPGC = 0,
             APLKNJEGBKF = false,
             LLFOFPNDAFG = 1
         };
 
-        // 必须下发选中的 EventID，否则战斗逻辑会失去目标
         if (targetEventId != 0)
         {
             snapshot.HLIBIJFHHPG.Add(targetEventId); 
         }
 
-        // 【解决离队】镜像回传请求中的角色数据，锁定 UI 阵容
+        // 镜像回传：解决选人界面离队和头像消失
         snapshot.MDLACHDKMPH.AddRange(req.MDLACHDKMPH);
         snapshot.AvatarList.AddRange(req.AvatarList);
 
@@ -153,65 +144,62 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
     }
 
     /// <summary>
-    /// 胜利结算后调用：推进轮次下标
+    /// 进入战斗位面逻辑
     /// </summary>
+    public async ValueTask EnterBoxingClubStage(uint challengeId)
+    {
+        if (this.CurrentChallengeId != challengeId || this.CurrentMatchEventId == 0) return;
+
+        // 公式：StageID = EventID * 10 + 均衡等级
+        int actualStageId = (int)(this.CurrentMatchEventId * 10) + Player.Data.WorldLevel;
+        
+        if (!GameData.StageConfigData.TryGetValue(actualStageId, out var stageConfig)) return;
+
+        // 修正 BattleInstance 初始化 (new List 包装)
+        BattleInstance battleInstance = new(Player, Player.LineupManager!.GetCurLineup()!, new List<StageConfigExcel> { stageConfig })
+        {
+            WorldLevel = Player.Data.WorldLevel,
+            EventId = (int)this.CurrentMatchEventId,
+            CustomLevel = 10 + (Player.Data.WorldLevel * 10),
+            MappingInfoId = 0, 
+            StaminaCost = 0
+        };
+
+        var avatarList = new List<AvatarSceneInfo>();
+        foreach (var id in LastMatchAvatars)
+        {
+            // 分开查找 Formal 和 Trial，避开 BaseAvatarInfo 强转失败
+            var formalAvatar = Player.AvatarManager!.GetFormalAvatar((int)id);
+            var trialAvatar = Player.AvatarManager!.GetTrialAvatar((int)id);
+
+            if (formalAvatar != null)
+            {
+                avatarList.Add(new AvatarSceneInfo(formalAvatar.AvatarInfo, formalAvatar.AvatarType, Player)
+                {
+                    EntityId = ++Player.SceneInstance!.LastEntityId 
+                });
+            }
+            else if (trialAvatar != null)
+            {
+                avatarList.Add(new AvatarSceneInfo(trialAvatar.AvatarInfo, trialAvatar.AvatarType, Player)
+                {
+                    EntityId = ++Player.SceneInstance!.LastEntityId 
+                });
+            }
+        }
+        
+        battleInstance.AvatarInfo = avatarList;
+        Player.BattleInstance = battleInstance;
+        
+        // 发送位面进入包
+        await Player.SendPacket(new PacketSceneEnterStageScRsp(battleInstance));
+        Player.QuestManager!.OnBattleStart(battleInstance);
+    }
+
     public void AdvanceNextRound()
     {
         CurrentRoundIndex++;
-        // 每一波结束后重置随机状态
         CurrentMatchEventId = 0;
         CurrentOpponentIndex = 0;
     }
-    /// <summary>
-    /// 【核心处理】封装战斗启动逻辑
-    /// 公式 1: StageID = CurrentMatchEventId * 10 + WorldLevel
-    /// 公式 2: MonsterLevel = 10 + WorldLevel * 10
-    /// </summary>
-    public async ValueTask EnterBoxingClubStage(uint challengeId)
-{
-    // 1. 校验
-    if (this.CurrentChallengeId != challengeId || this.CurrentMatchEventId == 0) return;
-
-    // 2. 【核心公式】StageID = EventID * 10 + 均衡等级
-    int actualStageId = (int)(this.CurrentMatchEventId * 10) + Player.Data.WorldLevel;
-    
-    // 3. 获取 Stage 配置
-    if (!GameData.StageConfigData.TryGetValue(actualStageId, out var stageConfig)) return;
-
-    // 4. 初始化 BattleInstance
-    // 此时传入计算好的 stageConfig，Stages 列表就不是空的了
-    BattleInstance battleInstance = new(Player, Player.LineupManager!.GetCurLineup()!, [stageConfig])
-    {
-        WorldLevel = Player.Data.WorldLevel,
-        EventId = (int)this.CurrentMatchEventId,
-        CustomLevel = 10 + (Player.Data.WorldLevel * 10), // 怪物等级公式
-        MappingInfoId = 0, // 严禁走 MappingInfo 逻辑
-        StaminaCost = 0
-    };
-
-    // 5. 注入匹配时选好的 4 人阵容 (解决离队 Bug)
-    var avatarList = new List<AvatarSceneInfo>();
-    foreach (var id in LastMatchAvatars)
-    {
-        BaseAvatarInfo? avatarData = (BaseAvatarInfo?)Player.AvatarManager!.GetFormalAvatar((int)id) ?? 
-                                     Player.AvatarManager!.GetTrialAvatar((int)id);
-        if (avatarData != null)
-        {
-            avatarList.Add(new AvatarSceneInfo(avatarData.AvatarInfo, avatarData.AvatarType, Player)
-            {
-                EntityId = ++Player.SceneInstance!.LastEntityId 
-            });
-        }
-    }
-    battleInstance.AvatarInfo = avatarList;
-
-    // 6. 挂载并发送你说的那个 ScRsp
-    Player.BattleInstance = battleInstance;
-    
-    // 【关键步骤】发送包含 BattleInfo 的 PacketSceneEnterStageScRsp
-    await Player.SendPacket(new PacketSceneEnterStageScRsp(battleInstance));
-
-    // 触发 Quest 等系统监听
-    Player.QuestManager!.OnBattleStart(battleInstance);
-}
 }
