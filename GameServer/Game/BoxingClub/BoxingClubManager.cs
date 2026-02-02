@@ -2,7 +2,10 @@ using EggLink.DanhengServer.Data;
 using EggLink.DanhengServer.Data.Excel;
 using EggLink.DanhengServer.Proto;
 using EggLink.DanhengServer.GameServer.Game.Player;
-
+using EggLink.DanhengServer.GameServer.Game.Battle;      // 解决 BattleInstance
+using EggLink.DanhengServer.GameServer.Game.Scene.Entity; // 解决 AvatarSceneInfo
+using EggLink.DanhengServer.Database.Avatar;            // 解决 BaseAvatarInfo
+using EggLink.DanhengServer.GameServer.Server.Packet.Send.Scene; // 解决 PacketSceneEnterStageScRsp
 namespace EggLink.DanhengServer.GameServer.Game.BoxingClub;
 
 public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player)
