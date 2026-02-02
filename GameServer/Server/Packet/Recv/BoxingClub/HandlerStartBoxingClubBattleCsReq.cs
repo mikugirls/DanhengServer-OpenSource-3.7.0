@@ -1,9 +1,6 @@
 using EggLink.DanhengServer.GameServer.Server.Packet.Send.BoxingClub;
 using EggLink.DanhengServer.Kcp;
 using EggLink.DanhengServer.Proto;
-using EggLink.DanhengServer.GameServer.Game.Lineup;
-using EggLink.DanhengServer.Database.Lineup;
-using EggLink.DanhengServer.GameServer.Server.Packet.Send.Lineup;
 
 namespace EggLink.DanhengServer.GameServer.Server.Packet.Recv.BoxingClub;
 
@@ -13,14 +10,22 @@ public class HandlerStartBoxingClubBattleCsReq : Handler
     public override async Task OnHandle(Connection connection, byte[] header, byte[] data)
     {
         var req = StartBoxingClubBattleCsReq.Parser.ParseFrom(data);
-        var player = connection.Player!;
+        
+        // 1. 修复 CS8602: 使用安全访问符号 ? 替代 !
+        var player = connection.Player;
 
-        // 调用 Manager 内部封装的位面进入逻辑
-        // 内部会计算 StageID = EventID * 10 + WorldLevel
-        // 并通过 PacketSceneEnterStageScRsp 发送 BattleInfo
+        // 2. 增加安全检查：确保玩家和 Manager 已经就绪
+        if (player?.BoxingClubManager == null)
+        {
+            await connection.SendPacket(new PacketStartBoxingClubBattleScRsp((uint)Retcode.RetBoxingClubChallengeNotOpen));
+            return;
+        }
+
+        // 3. 修复 CS4014: 确保 await 战斗启动逻辑
+        // 这样可以保证 PacketSceneEnterStageScRsp 先于 StartBoxingClubBattleScRsp 发出
         await player.BoxingClubManager.EnterBoxingClubStage(req.ChallengeId);
         
-        // 注意：StartBoxingClubBattleScRsp 也要发一个，用来关掉 UI 的 Loading 或触发逻辑
+        // 4. 发送成功响应，告知客户端可以关闭活动 UI 容器
         await connection.SendPacket(new PacketStartBoxingClubBattleScRsp((uint)Retcode.RetSucc));
     }
 }
