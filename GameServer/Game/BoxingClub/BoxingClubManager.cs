@@ -159,4 +159,35 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
         CurrentMatchEventId = 0;
         CurrentOpponentIndex = 0;
     }
+    /// <summary>
+    /// 【核心处理】封装战斗启动逻辑
+    /// 公式 1: StageID = CurrentMatchEventId * 10 + WorldLevel
+    /// 公式 2: MonsterLevel = 10 + WorldLevel * 10
+    /// </summary>
+    public SceneBattleInfo? StartBattle(uint challengeId)
+    {
+        // 1. 状态校验：确保是当前匹配的关卡且有 EventID
+        if (this.CurrentChallengeId != challengeId || this.CurrentMatchEventId == 0)
+        {
+            return null;
+        }
+
+        // 2. 使用你的核心公式计算 StageID
+        // 均衡等级 = player.WorldLevel
+        uint actualStageId = (this.CurrentMatchEventId * 10) + player.WorldLevel;
+
+        // 3. 计算怪物等级
+        uint monsterLevel = 10 + (player.WorldLevel * 10);
+
+        // 4. 调用战斗引擎构建 SceneBattleInfo
+        // 传入 LastMatchAvatars 保证阵容正确
+        var battleInfo = player.BattleManager.CreateBattle(
+            actualStageId, 
+            this.LastMatchAvatars, 
+            monsterLevel, 
+            this.CurrentMatchEventId // 注入 EventID 以开启战斗内的活动机制
+        );
+
+        return battleInfo;
+    }
 }
