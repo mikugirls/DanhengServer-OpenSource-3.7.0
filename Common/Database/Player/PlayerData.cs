@@ -204,6 +204,8 @@ public class PlayerData : BaseDatabaseDataHelper
         var avatarInfo = DatabaseHelper.Instance!.GetInstance<AvatarData>(Uid);
         var inventoryInfo = DatabaseHelper.Instance.GetInstance<InventoryData>(Uid);
         var questInfo = DatabaseHelper.Instance.GetInstance<QuestData>(Uid);
+		// 【新增】获取数据库中的详细战绩数据
+    	var recordData = DatabaseHelper.Instance.GetInstance<FriendRecordData>(Uid);
 
         if (avatarInfo == null || inventoryInfo == null || questInfo == null)
         {
@@ -233,7 +235,83 @@ public class PlayerData : BaseDatabaseDataHelper
             CollectionInfo = new PlayerCollectionInfo(),
             CollectDiscCount = (uint)GameData.BackGroundMusicData.Count
         };
+        // 2. 【核心修复】修复右侧 PlayBoard 图标及详情战报
+    if (recordData != null)
+    {
+        foreach (var groupStat in recordData.ChallengeGroupStatistics.Values)
+        {
+            // 构造首页展示条目 (IHKGNJDNALJ)
+            var entry = groupStat.ToProto();
+            
+            // 根据 GroupId (来自你提供的 JSON 配置) 判断模式并填充详情
+            // A. 忘却之庭 (Memory: GroupId 100-1100)
+            if (groupStat.GroupId < 2000 && groupStat.MemoryGroupStatistics != null)
+            {
+                var bestMemory = groupStat.MemoryGroupStatistics.Values.MaxBy(x => x.Level);
+                if (bestMemory != null)
+                {
+                    // 填充首页最高进度
+                    entry.JGMIPMDPPIJ = bestMemory.Level; 
+                    entry.FCCDILGGOCI = 12; // 总层数
+                    
+                    // 填充点击后的战报详情 (混淆类 FCNOLLFGPCK)
+                    entry.GIEIDJEEPAC = new FCNOLLFGPCK
+                    {
+                        ScoreId = bestMemory.RoundCount,
+                        CurLevelStars = bestMemory.Stars,
+                        PlayerInfo = this.ToSimpleProto(FriendOnlineStatus.Online),
+                        LineupList = { bestMemory.Lineups.Select(team => new ChallengeLineupList {
+                            AvatarList = { team.Select(av => av.ToProto()) }
+                        })}
+                    };
+                }
+            }
+            // B. 虚构叙事 (Story: GroupId 2001-2100)
+            else if (groupStat.GroupId >= 2001 && groupStat.GroupId <= 2100 && groupStat.StoryGroupStatistics != null)
+            {
+                var bestStory = groupStat.StoryGroupStatistics.Values.MaxBy(x => x.Level);
+                if (bestStory != null)
+                {
+                    entry.JGMIPMDPPIJ = bestStory.Level;
+                    entry.FCCDILGGOCI = 4; // 虚构通常 4 层
+                    
+                    // 填充虚构详情 (混淆类 KAMCIOPBPGA)
+                    entry.ADDCJEJPFEF = new KAMCIOPBPGA
+                    {
+                        ScoreId = bestStory.Score, // 总分
+                        PeakTargetList = { 1, 2, 3 }, // 点亮三星
+                        // 按照你之前的逻辑，虚构阵容采用平铺方式
+                        AvatarList = { bestStory.Lineups.SelectMany(t => t).Select(av => new OILPIACENNH {
+                            Id = av.Id, Level = av.Level, Index = av.Index, GGDIIBCDOBB = av.Rank
+                        })}
+                    };
+                }
+            }
+            // C. 末日幻影 (Boss: GroupId 3001+)
+            else if (groupStat.GroupId >= 3001 && groupStat.BossGroupStatistics != null)
+            {
+                var bestBoss = groupStat.BossGroupStatistics.Values.MaxBy(x => x.Level);
+                if (bestBoss != null)
+                {
+                    entry.JGMIPMDPPIJ = bestBoss.Level;
+                    entry.FCCDILGGOCI = 4;
 
+                    // 填充末日详情 (混淆类 IIGJFPMIGKF)
+                    entry.JILKKAJBLJK = new IIGJFPMIGKF
+                    {
+                        ScoreId = bestBoss.Score,
+                        IsUltraBossWin = true,
+                        AvatarList = { bestBoss.Lineups.SelectMany(t => t).Select(av => new OILPIACENNH {
+                            Id = av.Id, Level = av.Level, Index = av.Index, GGDIIBCDOBB = av.Rank
+                        })}
+                    };
+                }
+            }
+
+            // 将配置好的条目加入名片显示列表
+            info.ONKHLHOJHGN.ChallengeList.Add(entry);
+        }
+    }
         var pos = 0;
         foreach (var avatar in avatarInfo.AssistAvatars.Select(assist =>
                      avatarInfo.FormalAvatars.Find(x => x.BaseAvatarId == assist)))
