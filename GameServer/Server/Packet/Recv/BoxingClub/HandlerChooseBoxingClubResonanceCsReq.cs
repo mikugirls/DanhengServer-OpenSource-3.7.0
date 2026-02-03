@@ -11,30 +11,26 @@ public class HandlerChooseBoxingClubResonanceCsReq : Handler
 {
     // 获取当前类的专用 Logger
     private static readonly Logger _log = Logger.GetByClassName();
+	public override async Task OnHandle(Connection connection, byte[] header, byte[] data)
+{
+    var req = ChooseBoxingClubResonanceCsReq.Parser.ParseFrom(data);
+    var manager = connection.Player?.BoxingClubManager;
 
-    public override async Task OnHandle(Connection connection, byte[] header, byte[] data)
+    if (manager == null) return;
+
+    // 根据 Proto 源码，Tag 12 (LLFOFPNDAFG) 就是选中的 Buff ID
+    var snapshot = manager.ProcessChooseResonance(req.ChallengeId, req.LLFOFPNDAFG);
+
+    if (snapshot != null)
     {
-        var req = ChooseBoxingClubResonanceCsReq.Parser.ParseFrom(data);
-        var manager = connection.Player?.BoxingClubManager;
-
-        if (manager == null) return;
-
-        // 1. 调用你写的业务逻辑：推进轮次并生成快照
-        var snapshot = manager.ProcessChooseResonance(req.ChallengeId);
-
-        if (snapshot != null)
+        await connection.SendPacket(new PacketChooseBoxingClubResonanceScRsp(0, snapshot));
+        await connection.SendPacket(new PacketBoxingClubChallengeUpdateScNotify(snapshot));
+        
+        if (BoxingClubManager.EnableLog) 
         {
-            // 2. 发送响应 (4269)
-            await connection.SendPacket(new PacketChooseBoxingClubResonanceScRsp(0, snapshot));
-
-            // 3. 发送更新通知 (4244) - 驱动客户端 UI 进入“准备匹配下一场”的状态
-            await connection.SendPacket(new PacketBoxingClubChallengeUpdateScNotify(snapshot));
-            
-            // 修正错误：通过类名访问静态变量 EnableLog
-            if (BoxingClubManager.EnableLog) 
-            {
-                _log.Debug($"[Boxing] Resonance processed. Challenge: {req.ChallengeId}, Next Progress: {snapshot.HNPEAPPMGAA}");
-            }
+            _log.Debug($"[Boxing] Resonance {req.LLFOFPNDAFG} saved. Challenge: {req.ChallengeId}");
         }
     }
+}
+   
 }
