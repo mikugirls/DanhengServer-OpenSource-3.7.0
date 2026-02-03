@@ -21,6 +21,13 @@ public class HandlerChooseBoxingClubResonanceCsReq : Handler
         {
             // 回复 ScRsp，UI 会刷新并允许进行下一轮 MatchRequest
             await connection.SendPacket(new PacketChooseBoxingClubResonanceScRsp(0, snapshot));
+            // 3. 【核心修复】发送主动通知包 (ScNotify)
+            // 这会强制客户端 UI 更新到 2/4 进度，并由于 snapshot.HLIBIJFHHPG 为空，
+            // 触发客户端逻辑去请求 MatchBoxingClubOpponentCsReq。
+            await connection.SendPacket(new PacketBoxingClubChallengeUpdateScNotify(snapshot));
+            
+            if (BoxingClubManager.EnableLog) 
+                _log.Debug($"[Boxing] 已下发 4269 和 4244，当前进度推送到: {snapshot.HNPEAPPMGAA}");
         }
     }
 }
