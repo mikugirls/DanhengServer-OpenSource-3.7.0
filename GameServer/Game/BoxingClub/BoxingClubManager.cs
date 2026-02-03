@@ -162,7 +162,12 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
 
     public async ValueTask EnterBoxingClubStage(uint challengeId)
     {
-        if (Player?.SceneInstance == null) return;
+        // 1. 同时检查 Player、场景实例和编队管理器
+    	if (Player?.SceneInstance == null || Player.LineupManager == null || Player.AvatarManager == null) 
+    	{	
+        _log.Error("Player state invalid: SceneInstance, LineupManager, or AvatarManager is null.");
+        return;
+    	}
         if (this.CurrentChallengeId != challengeId || this.CurrentMatchEventId == 0) return;
 
         int actualStageId = (int)(this.CurrentMatchEventId * 10) + Player.Data.WorldLevel;
