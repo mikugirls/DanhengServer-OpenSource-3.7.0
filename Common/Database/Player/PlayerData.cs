@@ -238,45 +238,48 @@ public class PlayerData : BaseDatabaseDataHelper
         };
     	// 1. 初始化显示设置
 		info.ONKHLHOJHGN = new PlayerDisplaySettings();
+		// 在 PlayerData.ToDetailProto() 内部
+if (recordData != null)
+{
+    foreach (var groupStatPb in recordData.ChallengeGroupStatistics.Values)
+    {
+        // 调用 ToProto() 触发内部的星星累加逻辑
+        var challengeProto = groupStatPb.ToProto();
 
-		if (recordData != null)
-		{
-    	foreach (var groupStat in recordData.ChallengeGroupStatistics.Values)
-    {	
         var entry = new IHKGNJDNALJ
         {
-            GroupId = groupStat.GroupId,           
-            GroupTotalStars = groupStat.GroupTotalStars,
-            // 模式总层数：通常忘却12，虚构/末日4 (控制进度条长度)
-            FCCDILGGOCI = groupStat.GroupId >= 2000 ? 4u : 12u 
+            GroupId = groupStatPb.GroupId,
+            // 此时 challengeProto.GroupTotalStars 已经过 Pb 类内部循环累加计算
+            GroupTotalStars = challengeProto.GroupTotalStars, 
+            FCCDILGGOCI = groupStatPb.GroupId >= 2000 ? 4u : 12u 
         };
 
-        // --- 核心修正：区分进度显示 (层数 vs 分数) ---
-        if (groupStat.GroupId >= 2001) 
+        // 处理进度数字 (JGMIPMDPPIJ)
+        if (groupStatPb.GroupId >= 2001) 
         {
-            // B. 虚构叙事 & C. 末日幻影：首页显示总积分
-            // 逻辑：从该组所有层级中找出最高分
+            // 虚构/末日：取最高分
             uint maxScore = 0;
-            if (groupStat.StoryGroupStatistics != null)
-                maxScore = groupStat.StoryGroupStatistics.Values.Select(x => x.Score).DefaultIfEmpty(0u).Max();
-            else if (groupStat.BossGroupStatistics != null)
-                maxScore = groupStat.BossGroupStatistics.Values.Select(x => x.Score).DefaultIfEmpty(0u).Max();
+            if (groupStatPb.StoryGroupStatistics != null)
+                maxScore = groupStatPb.StoryGroupStatistics.Values.Select(x => x.Score).DefaultIfEmpty(0u).Max();
+            else if (groupStatPb.BossGroupStatistics != null)
+                maxScore = groupStatPb.BossGroupStatistics.Values.Select(x => x.Score).DefaultIfEmpty(0u).Max();
             
-            entry.JGMIPMDPPIJ = maxScore; // 首页图标下将显示积分数字
+            entry.JGMIPMDPPIJ = maxScore;
         }
         else 
         {
-            // A. 忘却之庭：首页显示最高层数
+            // 忘却：取最高层
             uint maxFloor = 0;
-            if (groupStat.MemoryGroupStatistics != null)
-                maxFloor = groupStat.MemoryGroupStatistics.Values.Select(x => x.Level).DefaultIfEmpty(0u).Max();
+            if (groupStatPb.MemoryGroupStatistics != null)
+                maxFloor = groupStatPb.MemoryGroupStatistics.Values.Select(x => x.Level).DefaultIfEmpty(0u).Max();
             
-            entry.JGMIPMDPPIJ = maxFloor; // 首页图标下将显示层数数字
+            entry.JGMIPMDPPIJ = maxFloor;
         }
 
         info.ONKHLHOJHGN.ChallengeList.Add(entry);
-    	}
-		}
+    }
+}
+		
         var pos = 0;
         foreach (var avatar in avatarInfo.AssistAvatars.Select(assist =>
                      avatarInfo.FormalAvatars.Find(x => x.BaseAvatarId == assist)))
