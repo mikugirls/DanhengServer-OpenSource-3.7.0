@@ -15,7 +15,7 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
 {
     // --- 全局调试日志开关 ---
     public static bool EnableLog = true; 
-
+	public List<uint> CurrentChallengeBuffs { get; set; } = new();
     // 初始化自定义 Logger 实例，模块名为 BoxingClub
     private static readonly Logger _log = new("BoxingClub");
 
@@ -162,33 +162,26 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
     {
         if (Player?.SceneInstance == null) return;
         if (this.CurrentChallengeId != challengeId || this.CurrentMatchEventId == 0) return;
-		
+
         int actualStageId = (int)(this.CurrentMatchEventId * 10) + Player.Data.WorldLevel;
         if (EnableLog) _log.Info($"Starting Battle: StageID {actualStageId}");
-        
+
         if (!GameData.StageConfigData.TryGetValue(actualStageId, out var stageConfig))
         {
             if (EnableLog) _log.Error($"StageID {actualStageId} not found!");
             return;
         }
-		// 1. 从配置中获取正确的轮数限制
-    int turnLimit = 30; // 默认给30
-    if (GameData.BoxingClubChallengeData.TryGetValue((int)challengeId, out var config))
-    {
-        // 关键：读取 Excel 里的 ChallengeTurnLimit 字段
-        turnLimit = config.ChallengeTurnLimit > 0 ? config.ChallengeTurnLimit : 30;
-    }
-        BattleInstance battleInstance = new(Player, Player.LineupManager!.GetCurLineup()!, new List<StageConfigExcel> { stageConfig })
-        {
-            WorldLevel = Player.Data.WorldLevel,
-            EventId = (int)this.CurrentMatchEventId,
-            CustomLevel = 10 + (Player.Data.WorldLevel * 10),
-            MappingInfoId = 0, 
-            StaminaCost = 0,
-			RoundLimit = turnLimit
-        };
 
+        int turnLimit = 30;
+        if (GameData.BoxingClubChallengeData.TryGetValue((int)challengeId, out var config))
+        {
+            turnLimit = config.ChallengeTurnLimit > 0 ? config.ChallengeTurnLimit : 30;
+        }
+
+        // --- [核心修复：构建临时阵容与插件] ---
         var avatarList = new List<AvatarSceneInfo>();
+        var lineupAvatars = new List<LineupAvatarInfo>(); // 用于构建临时编队上下文
+
         foreach (var id in LastMatchAvatars)
         {
             BaseAvatarInfo? avatarData = (BaseAvatarInfo?)Player.AvatarManager!.GetFormalAvatar((int)id) ?? 
@@ -197,22 +190,51 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
             if (avatarData != null)
             {
                 AvatarType type = (avatarData is SpecialAvatarInfo) ? AvatarType.AvatarTrialType : AvatarType.AvatarFormalType;
+                
+                // 1. 构造场景实体 (用于模型显示)
                 var sceneInfo = new AvatarSceneInfo(avatarData, type, Player)
                 {
                     EntityId = ++Player.SceneInstance.LastEntityId 
                 };
                 avatarList.Add(sceneInfo);
+
+                // 2. 构造编队元数据 (用于 ToBattleProto 的上下文)
+                lineupAvatars.Add(new LineupAvatarInfo {
+                    BaseAvatarId = (int)id,
+                    SpecialAvatarId = (type == AvatarType.AvatarTrialType) ? (int)id : 0
+                });
+
+                // 3. 强制满血满能进场
+                avatarData.SetCurHp(10000, true);
+                avatarData.SetCurSp(10000, true);
             }
         }
-        
-        battleInstance.AvatarInfo = avatarList;
+
+        // --- [学习 GridFight：装载劫持插件] ---
+        // 先给 LineupManager 设置一个临时编队类型，确保 IsExtraLineup 为 true
+        Player.LineupManager.SetExtraLineup(ExtraLineupType.LineupBoxingClub, lineupAvatars);
+        var curLineup = Player.LineupManager.GetCurLineup();
+
+        BattleInstance battleInstance = new(Player, curLineup!, new List<StageConfigExcel> { stageConfig })
+        {
+            WorldLevel = Player.Data.WorldLevel,
+            EventId = (int)this.CurrentMatchEventId,
+            RoundLimit = (uint)turnLimit,
+            // 注入劫持选项，把我们准备好的 avatarList 传给 BattleInstance.ToProto
+            BoxingClubOptions = new BattleBoxingClubOptions(avatarList, new List<uint>(), Player) 
+        };
+
         Player.BattleInstance = battleInstance;
         
+        // 发送进入战斗包 (4283)
         await Player.SendPacket(new PacketSceneEnterStageScRsp(battleInstance));
-        Player.SceneInstance?.OnEnterStage();
-		Player.QuestManager?.OnBattleStart(battleInstance);
-        
-        if (EnableLog) _log.Debug("Stage packet sent, entering battle scene...");
+
+        // --- [重要：严禁调用 OnEnterStage()] ---
+        // Player.SceneInstance?.OnEnterStage(); // 必须注释掉！否则会刷掉刚才生成的临时实体
+
+        Player.QuestManager?.OnBattleStart(battleInstance);
+
+        if (EnableLog) _log.Debug("Boxing Club Battle Started with custom hijacked lineup.");
     }
 	/// <summary>
     /// 处理协议 4281 (ChooseBoxingClubResonanceCsReq)
