@@ -104,7 +104,7 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
         uint selectedGroupId = 0;
         uint randomIndex = 1;
         uint targetEventId = 0;
-
+		
         if (GameData.BoxingClubChallengeData.TryGetValue((int)req.ChallengeId, out var config))
         {
             if (config.StageGroupList != null && CurrentRoundIndex < config.StageGroupList.Count)
@@ -162,7 +162,7 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
     {
         if (Player?.SceneInstance == null) return;
         if (this.CurrentChallengeId != challengeId || this.CurrentMatchEventId == 0) return;
-
+		
         int actualStageId = (int)(this.CurrentMatchEventId * 10) + Player.Data.WorldLevel;
         if (EnableLog) _log.Info($"Starting Battle: StageID {actualStageId}");
         
@@ -171,14 +171,21 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
             if (EnableLog) _log.Error($"StageID {actualStageId} not found!");
             return;
         }
-
+		// 1. 从配置中获取正确的轮数限制
+    int turnLimit = 30; // 默认给30
+    if (GameData.BoxingClubChallengeData.TryGetValue((int)challengeId, out var config))
+    {
+        // 关键：读取 Excel 里的 ChallengeTurnLimit 字段
+        turnLimit = config.ChallengeTurnLimit > 0 ? config.ChallengeTurnLimit : 30;
+    }
         BattleInstance battleInstance = new(Player, Player.LineupManager!.GetCurLineup()!, new List<StageConfigExcel> { stageConfig })
         {
             WorldLevel = Player.Data.WorldLevel,
             EventId = (int)this.CurrentMatchEventId,
             CustomLevel = 10 + (Player.Data.WorldLevel * 10),
             MappingInfoId = 0, 
-            StaminaCost = 0
+            StaminaCost = 0,
+			RoundLimit = turnLimit
         };
 
         var avatarList = new List<AvatarSceneInfo>();
