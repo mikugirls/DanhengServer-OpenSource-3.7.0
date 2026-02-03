@@ -182,7 +182,13 @@ public class PlayerData : BaseDatabaseDataHelper
 
         return info;
     }
-
+	// 战报详情条目
+	// message IHKGNJDNALJ { 有疑问未测试
+  	// uint32 FCCDILGGOCI = 5;  // MaxLevel: 总层数上限
+  	// uint32 GroupId = 6;      // ScheduleID: 关卡期数ID
+  	// uint32 JGMIPMDPPIJ = 13; // Progress: 忘却填层数, 虚构/末日填总分
+  	// uint32 GroupTotalStars = 14; // TotalStars: 总星数
+	}
     public PlayerDetailInfo ToDetailProto()
     {
         var info = new PlayerDetailInfo
