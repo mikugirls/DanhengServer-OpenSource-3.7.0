@@ -5,6 +5,7 @@ using EggLink.DanhengServer.Database.Inventory;
 using EggLink.DanhengServer.Database.Quests;
 using EggLink.DanhengServer.Proto;
 using EggLink.DanhengServer.Util;
+using EggLink.DanhengServer.Database.Friend; // 添加这一行
 using SqlSugar;
 using LineupInfo = EggLink.DanhengServer.Database.Lineup.LineupInfo;
 
