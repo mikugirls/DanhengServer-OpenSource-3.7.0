@@ -206,7 +206,10 @@ public class PlayerData : BaseDatabaseDataHelper
             Uid = (uint)Uid,
             WorldLevel = (uint)WorldLevel,
             EMOBIJBDKEI = true, // ShowDisplayAvatar
+			// --- 核心修复：生日 ---
+        	OOOPBHIMNFD = (uint)Birthday, // 将数据库里的 Birthday 填入混淆字段
             RecordInfo = new PlayerRecordInfo(),
+			
             PrivacySettings = PrivacySettings.ToProto(),
             HeadFrame = HeadFrame.ToProto()
         };
