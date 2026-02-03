@@ -190,6 +190,9 @@ public class PlayerData : BaseDatabaseDataHelper
   	// uint32 GroupTotalStars = 14; // TotalStars: 总星数
 	}
     public PlayerDetailInfo ToDetailProto()
+	// OOOPBHIMNFD = Birthday (生日)
+    // KBMGBNINFBK = AccountDays (账号天数)
+    // ONKHLHOJHGN = ChallengeListEntry (战报容器)	
     {
         var info = new PlayerDetailInfo
         {
