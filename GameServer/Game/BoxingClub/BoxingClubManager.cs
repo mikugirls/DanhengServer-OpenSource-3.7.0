@@ -240,42 +240,48 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
     /// 处理协议 4281 (ChooseBoxingClubResonanceCsReq)
     /// 逻辑：调用 AdvanceNextRound 推进索引，返回不带 HLIBIJFHHPG 的快照，触发下一轮抽选。
     /// </summary>
-    public FCIHIJLOMGA? ProcessChooseResonance(uint challengeId)
+    /// <summary>
+    /// 处理协议 4281 (ChooseBoxingClubResonanceCsReq)
+    /// </summary>
+    public FCIHIJLOMGA? ProcessChooseResonance(uint challengeId, uint resonanceId)
     {
         if (this.CurrentChallengeId != challengeId) return null;
 
-        if (EnableLog) _log.Info($"[Boxing] 收到共鸣选择，执行晋级。当前关卡进度: {CurrentRoundIndex + 1}");
+        if (EnableLog) _log.Info($"[Boxing] 收到共鸣选择: {resonanceId}，执行晋级。");
 
-        // 1. 调用你已有的方法：CurrentRoundIndex++，CurrentMatchEventId = 0
+        // --- 核心修改：记录选中的 Buff ---
+        if (resonanceId != 0 && !CurrentChallengeBuffs.Contains(resonanceId))
+        {
+            this.CurrentChallengeBuffs.Add(resonanceId);
+        }
+
+        // 1. 调用 AdvanceNextRound：CurrentRoundIndex++，CurrentMatchEventId = 0
         this.AdvanceNextRound();
 
-        // 2. 构造快照：LLFOFPNDAFG 保持 1 (积分赛)
+        // 2. 构造快照
         var snapshot = new FCIHIJLOMGA
         {
             ChallengeId = challengeId,
-            LLFOFPNDAFG = 1, 
-            // 关键：HNPEAPPMGAA 决定 UI 上的进度文字 (例如 2/4)
-            HNPEAPPMGAA = (uint)(this.CurrentRoundIndex + 1), 
-            NAALCBMBPGC = 0,
+            LLFOFPNDAFG = 1, // 状态 1 代表进行中
+            HNPEAPPMGAA = (uint)(this.CurrentRoundIndex + 1), // UI 显示进度，如 2/4
             APLKNJEGBKF = false
         };
 
-        // 3. 判定是否已打完所有轮次 (根据配置表的 StageGroupList 长度)
+        // 3. 判定是否已打完
         if (GameData.BoxingClubChallengeData.TryGetValue((int)challengeId, out var config))
         {
             int maxRounds = config.StageGroupList?.Count ?? 0;
             if (this.CurrentRoundIndex >= maxRounds)
             {
-                snapshot.APLKNJEGBKF = true; // 显示通关大勾
+                snapshot.APLKNJEGBKF = true; // 显示大勾
                 snapshot.HNPEAPPMGAA = (uint)maxRounds; 
             }
         }
 
-        // 4. 同步阵容记忆，保证返回 UI 后刚才选的人还在
+        // 4. 同步阵容记忆，防止返回 UI 后角色掉线
         snapshot.AvatarList.AddRange(this.LastMatchAvatars);
 
-        // 注意：这里绝对不填充 snapshot.HLIBIJFHHPG
-        // 客户端发现这个列表为空，且状态为 1，就会显示“匹配对手”并允许触发抽选。
+        // 保持 HLIBIJFHHPG 为空，触发 UI 的“匹配对手”按钮
         return snapshot;
     }
 	/// <summary>
