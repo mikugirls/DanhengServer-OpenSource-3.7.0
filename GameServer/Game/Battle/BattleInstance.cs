@@ -88,6 +88,7 @@ public class BattleInstance(PlayerInstance player, LineupInfo lineup, List<Stage
     public BattleCollegeConfigExcel? CollegeConfigExcel { get; set; }
     public PVEBattleResultCsReq? BattleResult { get; set; }
     public BattleGridFightOptions? GridFightOptions { get; set; }
+	public BattleBoxingClubOptions? BoxingClubOptions { get; set; }	
     public bool IsTournRogue { get; set; }
 
     public delegate ValueTask OnBattleEndDelegate(BattleInstance battle, PVEBattleResultCsReq req);
@@ -132,7 +133,45 @@ public class BattleInstance(PlayerInstance player, LineupInfo lineup, List<Stage
         };
         value.BattleTargetList_.Add(battleTarget);
     }
+  // 修复报错：The name 'FillMonsterWaves' does not exist in the current context
+	private void FillMonsterWaves(SceneBattleInfo proto)
+{
+    // 如果是肉鸽魔法，填充该字段
+    if (MagicInfo != null) proto.BattleRogueMagicInfo = MagicInfo;
 
+    // 填充怪物波次
+    foreach (var protoWave in Stages.Select(wave => wave.ToProto()))
+    {
+        if (CustomLevel > 0)
+        {
+            foreach (var item in protoWave)
+                item.MonsterParam.Level = (uint)CustomLevel;
+        }
+        proto.MonsterWaveList.AddRange(protoWave);
+    }
+
+    // 处理遇袭触发的额外怪物 (NextBattleMonsterIds)
+    if (Player.BattleManager!.NextBattleMonsterIds.Count > 0)
+    {
+        var ids = Player.BattleManager!.NextBattleMonsterIds;
+        for (var i = 0; i < (ids.Count - 1) / 5 + 1; i++)
+        {
+            var count = Math.Min(5, ids.Count - i * 5);
+            var waveIds = ids.GetRange(i * 5, count);
+
+            proto.MonsterWaveList.Add(new SceneMonsterWave
+            {
+                BattleStageId = (uint)(Stages.FirstOrDefault()?.StageID ?? 0),
+                BattleWaveId = (uint)(proto.MonsterWaveList.Count + 1),
+                MonsterParam = new SceneMonsterWaveParam(),
+                MonsterList =
+                {
+                    waveIds.Select(x => new SceneMonster { MonsterId = (uint)x })
+                }
+            });
+        }
+    }
+	}
   public List<AvatarLineupData> GetBattleAvatars()
     {
         // 1. 优先处理试用关卡、战斗学院等特殊 Stage 的固定阵容
