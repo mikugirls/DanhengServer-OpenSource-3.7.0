@@ -221,7 +221,7 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
         {
             WorldLevel = Player.Data.WorldLevel,
             EventId = (int)this.CurrentMatchEventId,
-            RoundLimit = (uint)turnLimit,
+            RoundLimit = turnLimit,
             // 注入劫持选项，把我们准备好的 avatarList 传给 BattleInstance.ToProto
             BoxingClubOptions = new BattleBoxingClubOptions(avatarList, new List<uint>(), Player) 
         };
