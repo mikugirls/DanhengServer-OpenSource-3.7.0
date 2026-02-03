@@ -236,83 +236,47 @@ public class PlayerData : BaseDatabaseDataHelper
             CollectionInfo = new PlayerCollectionInfo(),
             CollectDiscCount = (uint)GameData.BackGroundMusicData.Count
         };
-        // 2. 【核心修复】修复右侧 PlayBoard 图标及详情战报
-    if (recordData != null)
-    {
-        foreach (var groupStat in recordData.ChallengeGroupStatistics.Values)
+    	// 1. 初始化显示设置
+		info.ONKHLHOJHGN = new PlayerDisplaySettings();
+
+		if (recordData != null)
+		{
+    	foreach (var groupStat in recordData.ChallengeGroupStatistics.Values)
+    {	
+        var entry = new IHKGNJDNALJ
         {
-            // 构造首页展示条目 (IHKGNJDNALJ)
-            var entry = groupStat.ToProto();
+            GroupId = groupStat.GroupId,           
+            GroupTotalStars = groupStat.GroupTotalStars,
+            // 模式总层数：通常忘却12，虚构/末日4 (控制进度条长度)
+            FCCDILGGOCI = groupStat.GroupId >= 2000 ? 4u : 12u 
+        };
+
+        // --- 核心修正：区分进度显示 (层数 vs 分数) ---
+        if (groupStat.GroupId >= 2001) 
+        {
+            // B. 虚构叙事 & C. 末日幻影：首页显示总积分
+            // 逻辑：从该组所有层级中找出最高分
+            uint maxScore = 0;
+            if (groupStat.StoryGroupStatistics != null)
+                maxScore = groupStat.StoryGroupStatistics.Values.Select(x => x.Score).DefaultIfEmpty(0u).Max();
+            else if (groupStat.BossGroupStatistics != null)
+                maxScore = groupStat.BossGroupStatistics.Values.Select(x => x.Score).DefaultIfEmpty(0u).Max();
             
-            // 根据 GroupId (来自你提供的 JSON 配置) 判断模式并填充详情
-            // A. 忘却之庭 (Memory: GroupId 100-1100)
-            if (groupStat.GroupId < 2000 && groupStat.MemoryGroupStatistics != null)
-            {
-                var bestMemory = groupStat.MemoryGroupStatistics.Values.MaxBy(x => x.Level);
-                if (bestMemory != null)
-                {
-                    // 填充首页最高进度
-                    entry.JGMIPMDPPIJ = bestMemory.Level; 
-                    entry.FCCDILGGOCI = 12; // 总层数
-                    
-                    // 填充点击后的战报详情 (混淆类 FCNOLLFGPCK)
-                    entry.GIEIDJEEPAC = new FCNOLLFGPCK
-                    {
-                        ScoreId = bestMemory.RoundCount,
-                        CurLevelStars = bestMemory.Stars,
-                        PlayerInfo = this.ToSimpleProto(FriendOnlineStatus.Online),
-                        LineupList = { bestMemory.Lineups.Select(team => new ChallengeLineupList {
-                            AvatarList = { team.Select(av => av.ToProto()) }
-                        })}
-                    };
-                }
-            }
-            // B. 虚构叙事 (Story: GroupId 2001-2100)
-            else if (groupStat.GroupId >= 2001 && groupStat.GroupId <= 2100 && groupStat.StoryGroupStatistics != null)
-            {
-                var bestStory = groupStat.StoryGroupStatistics.Values.MaxBy(x => x.Level);
-                if (bestStory != null)
-                {
-                    entry.JGMIPMDPPIJ = bestStory.Level;
-                    entry.FCCDILGGOCI = 4; // 虚构通常 4 层
-                    
-                    // 填充虚构详情 (混淆类 KAMCIOPBPGA)
-                    entry.ADDCJEJPFEF = new KAMCIOPBPGA
-                    {
-                        ScoreId = bestStory.Score, // 总分
-                        PeakTargetList = { 1, 2, 3 }, // 点亮三星
-                        // 按照你之前的逻辑，虚构阵容采用平铺方式
-                        AvatarList = { bestStory.Lineups.SelectMany(t => t).Select(av => new OILPIACENNH {
-                            Id = av.Id, Level = av.Level, Index = av.Index, GGDIIBCDOBB = av.Rank
-                        })}
-                    };
-                }
-            }
-            // C. 末日幻影 (Boss: GroupId 3001+)
-            else if (groupStat.GroupId >= 3001 && groupStat.BossGroupStatistics != null)
-            {
-                var bestBoss = groupStat.BossGroupStatistics.Values.MaxBy(x => x.Level);
-                if (bestBoss != null)
-                {
-                    entry.JGMIPMDPPIJ = bestBoss.Level;
-                    entry.FCCDILGGOCI = 4;
-
-                    // 填充末日详情 (混淆类 IIGJFPMIGKF)
-                    entry.JILKKAJBLJK = new IIGJFPMIGKF
-                    {
-                        ScoreId = bestBoss.Score,
-                        IsUltraBossWin = true,
-                        AvatarList = { bestBoss.Lineups.SelectMany(t => t).Select(av => new OILPIACENNH {
-                            Id = av.Id, Level = av.Level, Index = av.Index, GGDIIBCDOBB = av.Rank
-                        })}
-                    };
-                }
-            }
-
-            // 将配置好的条目加入名片显示列表
-            info.ONKHLHOJHGN.ChallengeList.Add(entry);
+            entry.JGMIPMDPPIJ = maxScore; // 首页图标下将显示积分数字
         }
-    }
+        else 
+        {
+            // A. 忘却之庭：首页显示最高层数
+            uint maxFloor = 0;
+            if (groupStat.MemoryGroupStatistics != null)
+                maxFloor = groupStat.MemoryGroupStatistics.Values.Select(x => x.Level).DefaultIfEmpty(0u).Max();
+            
+            entry.JGMIPMDPPIJ = maxFloor; // 首页图标下将显示层数数字
+        }
+
+        info.ONKHLHOJHGN.ChallengeList.Add(entry);
+    	}
+		}
         var pos = 0;
         foreach (var avatar in avatarInfo.AssistAvatars.Select(assist =>
                      avatarInfo.FormalAvatars.Find(x => x.BaseAvatarId == assist)))
