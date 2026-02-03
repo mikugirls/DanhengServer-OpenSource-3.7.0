@@ -256,6 +256,46 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
         // 客户端发现这个列表为空，且状态为 1，就会显示“匹配对手”并允许触发抽选。
         return snapshot;
     }
+	/// <summary>
+    /// 处理协议 4294 (GiveUpBoxingClubChallengeCsReq)
+    /// PCPDFJHDJCC == true: 彻底放弃，进度清零。
+    /// PCPDFJHDJCC == false: 带进度的放弃，仅重置当前匹配状态。
+    /// </summary>
+    public FCIHIJLOMGA ProcessGiveUpChallenge(uint challengeId, bool isFullReset)
+    {
+        if (EnableLog) _log.Info($"[Boxing] 放弃挑战请求: ID {challengeId}, 是否彻底重置: {isFullReset}");
+
+        if (isFullReset)
+        {
+            // --- 场景 A: 彻底放弃 (PCPDFJHDJCC = true) ---
+            this.CurrentRoundIndex = 0;       // 轮次回到第一轮 (0)
+            this.LastMatchAvatars.Clear();    // 清空选人记忆
+            this.CurrentChallengeId = 0;      // 清除当前挑战激活状态
+        }
+        
+        // --- 场景 B: 共有逻辑 (无论哪种放弃，都得清掉当前匹配到的怪) ---
+        this.CurrentMatchEventId = 0;        // 清除已锁定的怪物 ID
+        this.CurrentOpponentIndex = 0;       // 清除转盘位置索引
+
+        // 构造返回给客户端的快照
+        var snapshot = new FCIHIJLOMGA
+        {
+            ChallengeId = challengeId,
+            LLFOFPNDAFG = 1,                 // 状态保持为积分赛 (1)
+            // 如果是彻底重置，进度给 0；否则保持当前进度 (1-based, 所以是 index + 1)
+            HNPEAPPMGAA = isFullReset ? 0 : (uint)(this.CurrentRoundIndex + 1),
+            APLKNJEGBKF = false,             // 放弃肯定不是通关
+            NAALCBMBPGC = 0                  // 重置累计轮次显示
+        };
+
+        // 如果只是中途退出（保留进度），要把人发回去，防止 UI 选人界面变空
+        if (!isFullReset)
+        {
+            snapshot.AvatarList.AddRange(this.LastMatchAvatars);
+        }
+
+        return snapshot;
+    }
     public void AdvanceNextRound()
     {
         if (EnableLog) _log.Info($"AdvanceRound: From {CurrentRoundIndex} to {CurrentRoundIndex + 1}");
