@@ -242,6 +242,10 @@ public class BattleInstance(PlayerInstance player, LineupInfo lineup, List<Stage
         {
             GridFightOptions.HandleProto(proto, this);  // grid fight will handle the proto itself
         }
+		else if (BoxingClubOptions != null) {
+    	BoxingClubOptions.HandleProto(proto, this); // 运行你的新插件
+    	FillMonsterWaves(proto); // 确保怪物波次也被填充
+		}
         else
         {
             if (MagicInfo != null) proto.BattleRogueMagicInfo = MagicInfo;
