@@ -8,6 +8,8 @@ using EggLink.DanhengServer.Database.Avatar;
 using EggLink.DanhengServer.GameServer.Server.Packet.Send.Scene;
 using EggLink.DanhengServer.Enums.Avatar;
 using EggLink.DanhengServer.Util; // 确保引用了 Logger 所在的命名空间
+using EggLink.DanhengServer.Database.Lineup; // 修复 LineupAvatarInfo 找不到
+using EggLink.DanhengServer.GameServer.Game.Battle.Custom; // 修复 BattleBoxingClubOptions 找不到
 
 namespace EggLink.DanhengServer.GameServer.Game.BoxingClub;
 
