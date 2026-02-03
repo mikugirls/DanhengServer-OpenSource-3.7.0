@@ -188,7 +188,7 @@ public class PlayerData : BaseDatabaseDataHelper
   	// uint32 GroupId = 6;      // ScheduleID: 关卡期数ID
   	// uint32 JGMIPMDPPIJ = 13; // Progress: 忘却填层数, 虚构/末日填总分
   	// uint32 GroupTotalStars = 14; // TotalStars: 总星数
-	}
+	//}
     public PlayerDetailInfo ToDetailProto()
 	// OOOPBHIMNFD = Birthday (生日)
     // KBMGBNINFBK = AccountDays (账号天数)
