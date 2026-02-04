@@ -1,33 +1,38 @@
-﻿using EggLink.DanhengServer.GameServer.Game.Player;
+using EggLink.DanhengServer.GameServer.Game.Player;
 using EggLink.DanhengServer.Kcp;
 using EggLink.DanhengServer.Proto;
+using EggLink.DanhengServer.Enums.Avatar;
 
 namespace EggLink.DanhengServer.GameServer.Server.Packet.Send.Lineup;
-public PacketGetLineupAvatarDataScRsp(PlayerInstance player) : base(CmdIds.GetLineupAvatarDataScRsp)
+
+public class PacketGetLineupAvatarDataScRsp : BasePacket
 {
-    var rsp = new GetLineupAvatarDataScRsp();
-
-    // 处理正式角色
-    player.AvatarManager?.AvatarData?.FormalAvatars?.ForEach(avatar =>
+    public PacketGetLineupAvatarDataScRsp(PlayerInstance player) : base(CmdIds.GetLineupAvatarDataScRsp)
     {
-        rsp.AvatarDataList.Add(new LineupAvatarData
-        {
-            Id = (uint)avatar.BaseAvatarId,
-            Hp = (uint)avatar.CurrentHp,
-            AvatarType = AvatarType.AvatarFormalType
-        });
-    });
+        var rsp = new GetLineupAvatarDataScRsp();
 
-    // 处理试用角色 (这是显示头像的关键)
-    player.AvatarManager?.AvatarData?.TrialAvatars?.ForEach(trialAvatar =>
-    {
-        rsp.AvatarDataList.Add(new LineupAvatarData
+        // 1. 处理正式角色
+        player.AvatarManager?.AvatarData?.FormalAvatars?.ForEach(avatar =>
         {
-            Id = (uint)trialAvatar.SpecialAvatarId,
-            Hp = (uint)trialAvatar.CurrentHp,
-            AvatarType = AvatarType.AvatarTrialType
+            rsp.AvatarDataList.Add(new LineupAvatarData
+            {
+                Id = (uint)avatar.BaseAvatarId,
+                Hp = (uint)avatar.CurrentHp,
+                AvatarType = AvatarType.AvatarFormalType
+            });
         });
-    });
 
-    SetData(rsp);
+        // 2. 处理试用角色 (这是修复试用角色不显示的关键)
+        player.AvatarManager?.AvatarData?.TrialAvatars?.ForEach(trialAvatar =>
+        {
+            rsp.AvatarDataList.Add(new LineupAvatarData
+            {
+                Id = (uint)trialAvatar.SpecialAvatarId,
+                Hp = (uint)trialAvatar.CurrentHp,
+                AvatarType = AvatarType.AvatarTrialType
+            });
+        });
+
+        SetData(rsp);
+    }
 }
