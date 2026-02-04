@@ -212,7 +212,7 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
         {
             WorldLevel = Player.Data.WorldLevel,
             EventId = (int)this.CurrentMatchEventId,
-            RoundLimit = (uint)turnLimit,
+            RoundLimit = turnLimit,
             // 如果你还需要注入“共鸣 Buff”，可以在这里保留 Options，但不再传自定义角色列表
             BoxingClubOptions = new BattleBoxingClubOptions([], this.CurrentChallengeBuffs.ToList(), Player)
         };
