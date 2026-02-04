@@ -1,110 +1,101 @@
-using EggLink.DanhengServer.Data;
+using EggLink.DanhengServer.Database.Lineup;
+using EggLink.DanhengServer.Enums.Avatar;
+using EggLink.DanhengServer.GameServer.Game.Battle;
+using EggLink.DanhengServer.GameServer.Game.Battle.Custom;
 using EggLink.DanhengServer.GameServer.Game.Player;
 using EggLink.DanhengServer.Proto;
 using EggLink.DanhengServer.Util;
 
 namespace EggLink.DanhengServer.GameServer.Game.BoxingClub;
 
-public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player)
+public class BoxingClubInstance(PlayerInstance player, uint challengeId, List<uint> avatars)
 {
-    private static readonly Logger _log = new("BoxingClub");
+    private static readonly Logger _log = new("BoxingClubInstance");
     
-    // 局内实例
-    public BoxingClubInstance? ChallengeInstance { get; set; }
+    public PlayerInstance Player { get; } = player;
+    public uint ChallengeId { get; } = challengeId;
+    public List<uint> SelectedAvatars { get; } = avatars;
+    public List<uint> SelectedBuffs { get; } = new();
+    
+    public int CurrentRoundIndex { get; set; } = 0;
+    public uint CurrentMatchEventId { get; set; } = 0;
+    public uint CurrentOpponentIndex { get; set; } = 0;
 
     /// <summary>
-    /// 匹配对手：如果没有实例则创建，如果有了则推进匹配数据
+    /// 进入战斗：负责槽位 19 的写入、激活以及战斗实例构造
     /// </summary>
-    public FCIHIJLOMGA ProcessMatchRequest(MatchBoxingClubOpponentCsReq req)
+    public async ValueTask EnterStage()
     {
-        // 1. 初始化实例
-        if (ChallengeInstance == null)
+        if (CurrentMatchEventId == 0) return;
+
+        // 1. 获取 Stage 配置 (EventID * 10 + 世界等级)
+        int actualStageId = (int)(CurrentMatchEventId * 10) + Player.Data.WorldLevel;
+        if (!Data.GameData.StageConfigData.TryGetValue(actualStageId, out var stageConfig))
         {
-            ChallengeInstance = new BoxingClubInstance(Player, req.ChallengeId, req.AvatarList.ToList());
+            _log.Error($"无法找到 Stage 配置: {actualStageId}");
+            return;
         }
 
-        var instance = ChallengeInstance;
-        uint targetEventId = 0;
-        uint randomIndex = 1;
-
-        // 2. 随机逻辑
-        if (GameData.BoxingClubChallengeData.TryGetValue((int)req.ChallengeId, out var config))
+        // 2. 准备额外阵容 (Slot 19)
+        var boxingLineup = new List<LineupAvatarInfo>();
+        foreach (var id in SelectedAvatars)
         {
-            if (config.StageGroupList != null && instance.CurrentRoundIndex < config.StageGroupList.Count)
+            var trial = Player.AvatarManager!.GetTrialAvatar((int)id);
+            // 关键：强制刷新试用角色的数值，防止等级为 0 导致 UI 不显示
+            trial?.CheckLevel(Player.Data.WorldLevel);
+
+            boxingLineup.Add(new LineupAvatarInfo
             {
-                var groupId = config.StageGroupList[instance.CurrentRoundIndex];
-                if (GameData.BoxingClubStageGroupData.TryGetValue(groupId, out var groupConfig))
-                {
-                    var displayList = groupConfig.DisplayEventIDList;
-                    if (displayList != null && displayList.Count > 0)
-                    {
-                        randomIndex = (uint)new Random().Next(1, displayList.Count + 1);
-                        targetEventId = (uint)displayList[(int)randomIndex - 1];
-                    }
-                }
-            }
+                BaseAvatarId = trial?.BaseAvatarId ?? (int)id,
+                SpecialAvatarId = trial != null ? (int)id : 0
+            });
         }
 
-        // 3. 存入实例
-        instance.CurrentMatchEventId = targetEventId;
-        instance.CurrentOpponentIndex = randomIndex;
+        // 写入并激活槽位 19 (LineupBoxingClub)
+        Player.LineupManager!.SetExtraLineup(ExtraLineupType.LineupBoxingClub, boxingLineup);
+        await Player.LineupManager.SetExtraLineup(ExtraLineupType.LineupBoxingClub);
 
-        return ConstructSnapshot(instance);
-    }
-
-    public FCIHIJLOMGA? ProcessChooseResonance(uint challengeId, uint resonanceId)
-    {
-        if (ChallengeInstance == null || ChallengeInstance.ChallengeId != challengeId) return null;
-
-        // 增加 Buff 并推进轮次
-        if (resonanceId != 0) ChallengeInstance.SelectedBuffs.Add(resonanceId);
-        ChallengeInstance.CurrentRoundIndex++;
-
-        // 检查是否通关
-        if (GameData.BoxingClubChallengeData.TryGetValue((int)challengeId, out var config))
+        // 3. 构造战斗
+        var battleInstance = new BattleInstance(Player, Player.LineupManager.GetCurLineup()!, [stageConfig])
         {
-            if (ChallengeInstance.CurrentRoundIndex >= (config.StageGroupList?.Count ?? 0))
-            {
-                var finalSnapshot = ConstructSnapshot(ChallengeInstance);
-                finalSnapshot.APLKNJEGBKF = true; // 打完了，显示大勾
-                
-                // 通关后销毁实例并切回阵容
-                _ = ChallengeInstance.OnBattleEnd(new PVEBattleResultCsReq { EndStatus = BattleEndStatus.BattleEndQuit });
-                return finalSnapshot;
-            }
-        }
-
-        return ConstructSnapshot(ChallengeInstance);
-    }
-
-    /// <summary>
-    /// 统一构造 FCIHIJLOMGA 快照的方法
-    /// </summary>
-    public FCIHIJLOMGA ConstructSnapshot(BoxingClubInstance inst)
-    {
-        var snapshot = new FCIHIJLOMGA
-        {
-            ChallengeId = inst.ChallengeId,
-            HJMGLEMJHKG = inst.CurrentOpponentIndex, // 转盘位置
-            LLFOFPNDAFG = 1,                         // 状态：进行中
-            HNPEAPPMGAA = (uint)(inst.CurrentRoundIndex + 1), // UI进度 1/4
-            APLKNJEGBKF = false
+            WorldLevel = Player.Data.WorldLevel,
+            EventId = (int)CurrentMatchEventId,
+            // 注入累加的 Buff (SelectedBuffs)
+            BoxingClubOptions = new BattleBoxingClubOptions(SelectedBuffs.ToList(), Player)
         };
 
-        if (inst.CurrentMatchEventId != 0)
-            snapshot.HLIBIJFHHPG.Add(inst.CurrentMatchEventId);
-
-        snapshot.AvatarList.AddRange(inst.SelectedAvatars);
+        Player.BattleInstance = battleInstance;
         
-        // 补全选人池 (暴力修复试用角色头像不显示)
-        if (GameData.BoxingClubChallengeData.TryGetValue((int)inst.ChallengeId, out var config))
-        {
-            config.SpecialAvatarIDList?.ForEach(id => snapshot.MDLACHDKMPH.Add(new IJKJJDHLKLB { 
-                AvatarId = (uint)id, 
-                AvatarType = AvatarType.AvatarLimitType 
-            }));
-        }
+        // 4. 发送进入战斗协议
+        await Player.SendPacket(new Server.Packet.Send.Scene.PacketSceneEnterStageScRsp(battleInstance));
+        Player.QuestManager?.OnBattleStart(battleInstance);
+        
+        _log.Info($"[Boxing] 玩家 {Player.Uid} 进入战斗，轮次索引: {CurrentRoundIndex}");
+    }
 
-        return snapshot;
+    /// <summary>
+    /// 结算拦截：判断胜负并决定是否重置阵容
+    /// </summary>
+    public async ValueTask OnBattleEnd(PVEBattleResultCsReq req)
+    {
+        if (req.EndStatus == BattleEndStatus.BattleEndWin)
+        {
+            // 胜利：清空匹配状态
+            CurrentMatchEventId = 0;
+            CurrentOpponentIndex = 0;
+            _log.Info($"[Boxing] 战斗胜利，轮次 {CurrentRoundIndex} 结束。");
+        }
+        else
+        {
+            // 失败或退出：强制切回大世界阵容 (None)，并销毁本局实例
+            _log.Info($"[Boxing] 战斗中止/失败，正在重置阵容并销毁实例。");
+            await Player.LineupManager!.SetExtraLineup(ExtraLineupType.LineupNone);
+            
+            // 修正：直接访问 Player.BoxingClubManager 属性
+            if (Player.BoxingClubManager != null) 
+            {
+                Player.BoxingClubManager.ChallengeInstance = null;
+            }
+        }
     }
 }
