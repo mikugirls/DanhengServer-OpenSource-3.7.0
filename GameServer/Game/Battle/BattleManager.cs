@@ -446,10 +446,9 @@ public class BattleManager(PlayerInstance player) : BasePlayerManager(player)
     if (Player.ActivityManager!.TrialActivityInstance != null && req.EndStatus == BattleEndStatus.BattleEndWin)
         await Player.ActivityManager.TrialActivityInstance.EndActivity(TrialActivityStatus.Finish);
 	// 只需要这一行：把结算丢给实例自己去处理
-	var boxingManager = Player.GetManager<BoxingClubManager>();
-	if (boxingManager?.ChallengeInstance != null)
+	if (Player.BoxingClubManager?.ChallengeInstance != null)
 	{
-    await boxingManager.ChallengeInstance.OnBattleEnd(req);
+    await Player.BoxingClubManager.ChallengeInstance.OnBattleEnd(req);
 	}
     // 最后才销毁实例
     Player.BattleInstance = null;
