@@ -8,6 +8,7 @@ using LineupInfo = EggLink.DanhengServer.Database.Lineup.LineupInfo;
 
 namespace EggLink.DanhengServer.GameServer.Game.Battle.Custom;
 
+// 确保构造函数只定义了这两个参数
 public class BattleBoxingClubOptions(List<uint> selectedBuffs, PlayerInstance player)
 {
     public List<uint> SelectedBuffs { get; set; } = selectedBuffs;
@@ -15,12 +16,7 @@ public class BattleBoxingClubOptions(List<uint> selectedBuffs, PlayerInstance pl
 
     public void HandleProto(SceneBattleInfo proto, BattleInstance battle)
     {
-        // 角色列表 (BattleAvatarList) 不再在这里处理！
-        // 因为已经在 EnterBoxingClubStage 里切换了 ExtraLineupType。
-        // BattleInstance.ToProto 的默认逻辑会自动调用 GetBattleAvatars() 
-        // 从槽位 19 (LineupBoxingClub) 里抓取正确的数据。
-
-        // 我们这里只注入搏击俱乐部专属的 Buff
+        // 这里只处理 Buff 注入
         foreach (var buffId in SelectedBuffs)
         {
             proto.BuffList.Add(new BattleBuff
