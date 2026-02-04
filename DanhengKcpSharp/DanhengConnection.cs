@@ -133,58 +133,41 @@ public class DanhengConnection
             // ignore
         }
     }
-
-    public async Task SendPacket(BasePacket packet)
+	public async Task SendPacket(BasePacket packet)
     {
-        // Test
+        // 1. 基础校验：无效 ID 直接拦截
         if (packet.CmdId <= 0)
         {
             Logger.Debug("Tried to send packet with missing cmd id!");
             return;
         }
 
-        // DO NOT REMOVE (unless we find a way to validate code before sending to client which I don't think we can)
+        // 2. 黑名单校验：如果在 BannedPackets 里就不发
         if (BannedPackets.Contains(packet.CmdId)) return;
+
+        // 3. 记录日志：在控制台打印发送记录
         LogPacket("Send", packet.CmdId, packet.Data);
-        // Header
+
+        // 4. 构建原始二进制数据包
         var packetBytes = packet.BuildPacket();
 
         try
         {
+            // 5. 执行加密并发送
             await SendPacket(packetBytes);
         }
         catch
         {
-            // ignore
+            // 忽略网络层面的发送失败
         }
 
-        if (packet.CmdId == CmdIds.SetClientPausedScRsp)
-	{
-    BasePacket lData;
-    switch (ConfigManager.Config.ServerOption.Language)
-    {
-        case "CHS":
-            // 修正：Lua脚本现在仅保留原始UID显示，不再追加 DanhengServer 文字
-            lData = new HandshakePacket(Convert.FromBase64String(
-                "bG9jYWwgZnVuY3Rpb24gbW9kaWZ5X3RleHRzKCkKICAgIGxvY2FsIHVpZCA9IENTLlVuaXR5RW5naW5lLkdhbWVPYmplY3QuRmluZCgiVmVyc2lvblRleHQiKTpHZXRDb21wb25lbnQoIlRleHQiKQogICAgaWYgdWlkIHRoZW4KICAgICAgICAtLSBCeXBhc3MgbW9kaWZpY2F0aW9uLCBrZWVwIG9yaWdpbmFsIHRleHQgKHdoaWNoIGlzIHRoZSBVSUQpCiAgICBlbmQKZW5kCgpsb2NhbCBzdGF0dXMsIGVyciA9IHBjYWxsKG1vZGlmeV90ZXh0cykKaWYgbm90IHN0YXR1cyB0aGVuCiAgICBsb2NhbCBmaWxlcyA9IGlvLm9wZW4oIi4vZXJyb3IudHh0IiwgInciKQogICAgZmlsZXM6d3JpdGUoZXJyKQogICAgZmlsZXM6Y2xvc2UoKQplbmQ="));
-            break;
-        case "CHT":
-            // 繁体同理修正
-            lData = new HandshakePacket(Convert.FromBase64String(
-                "bG9jYWwgZnVuY3Rpb24gbW9kaWZ5X3RleHRzKCkKICAgIGxvY2FsIHVpZCA9IENTLlVuaXR5RW5naW5lLkdhbWVPYmplY3QuRmluZCgiVmVyc2lvblRleHQiKTpHZXRDb21wb25lbnQoIlRleHQiKQogICAgaWYgdWlkIHRoZW4KICAgICAgICAtLSBrZWVwIG9yaWdpbmFsCiAgICBlbmQKZW5kCgpsb2NhbCBzdGF0dXMsIGVyciA9IHBjYWxsKG1vZGlmeV90ZXh0cykKaWYgbm90IHN0YXR1cyB0aGVuCiAgICBsb2NhbCBmaWxlcyA9IGlvLm9wZW4oIi4vZXJyb3IudHh0IiwgInciKQogICAgZmlsZXM6d3JpdGUoZXJyKQogICAgZmlsZXM6Y2xvc2UoKQplbmQ="));
-            break;
-        default:
-            // 英文同理修正
-            lData = new HandshakePacket(Convert.FromBase64String(
-                "bG9jYWwgZnVuY3Rpb24gbW9kaWZ5X3RleHRzKCkKICAgIGxvY2FsIHVpZCA9IENTLlVuaXR5RW5naW5lLkdhbWVPYmplY3QuRmluZCgiVmVyc2lvblRleHQiKTpHZXRDb21wb25lbnQoIlRleHQiKQogICAgaWYgdWlkIHRoZW4KICAgICAgICAtLSBrZWVwIG9yaWdpbmFsCiAgICBlbmQKZW5kCgpsb2NhbCBzdGF0dXMsIGVyciA9IHBjYWxsKG1vZGlmeV90ZXh0cykKaWYgbm90IHN0YXR1cyB0aGVuCiAgICBsb2NhbCBmaWxlcyA9IGlvLm9wZW4oIi4vZXJyb3IudHh0IiwgInciKQogICAgZmlsZXM6d3JpdGUoZXJyKQogICAgZmlsZXM6Y2xvc2UoKQplbmQ="));
-            break;
-		}
-
-    await SendPacket(lData.BuildPacket());
-	}
-	
-       
+        // ============================================================
+        // 删掉的地方：从这里到方法结束，原本所有的 if (packet.CmdId == ...) 
+        // 逻辑全部删除。
+        // 不再下发 HandshakePacket，不再执行 Lua 脚本，不再弹窗。
+        // ============================================================
     }
+  
 
     public async Task SendPacket(int cmdId)
     {
