@@ -182,12 +182,7 @@ public class DanhengConnection
 
     await SendPacket(lData.BuildPacket());
 	}
-	if (packet.CmdId == CmdIds.GetTutorialScRsp)
-	{
-    // 将其改为不执行任何操作的 Lua 脚本
-    BasePacket lData = new HandshakePacket(Convert.FromBase64String("LS0gRW1wdHk=")); 
-    await SendPacket(lData.BuildPacket());
-	}	
+	
        
     }
 
