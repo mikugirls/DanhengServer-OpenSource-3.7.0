@@ -17,6 +17,7 @@ using EggLink.DanhengServer.Util;
 using EggLink.DanhengServer.Database;
 using EggLink.DanhengServer.Enums.Scene;
 using EggLink.DanhengServer.GameServer.Server.Packet.Send.BoxingClub; // 必须添加这一行引用刚才创建的类
+using EggLink.DanhengServer.GameServer.Game.BoxingClub;
 using static EggLink.DanhengServer.GameServer.Plugin.Event.PluginEvent;
 
 namespace EggLink.DanhengServer.GameServer.Game.Battle;
