@@ -30,7 +30,7 @@ public class DispatchRoutes
             {
                 Name = Config.GameServer.GameServerId,
                 DispatchUrl = $"{Config.HttpServer.GetDisplayAddress()}/query_gateway",
-                EnvType = "21",
+                EnvType = "2",
                 DisplayName = Config.GameServer.GameServerName
             });
 
