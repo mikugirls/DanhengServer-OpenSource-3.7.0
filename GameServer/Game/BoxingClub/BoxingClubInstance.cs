@@ -17,7 +17,9 @@ public class BoxingClubInstance(PlayerInstance player, uint challengeId, List<ui
     public uint ChallengeId { get; } = challengeId;
     public List<uint> SelectedAvatars { get; } = avatars;
     public List<uint> SelectedBuffs { get; } = new();
-    
+    // --- 添加下面这一行 ---
+    public uint CurrentStageGroupId { get; set; } = 0; 
+    // ----------------------
     public int CurrentRoundIndex { get; set; } = 0;
     public uint CurrentMatchEventId { get; set; } = 0;
     public uint CurrentOpponentIndex { get; set; } = 0;
