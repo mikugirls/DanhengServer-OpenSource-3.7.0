@@ -182,28 +182,13 @@ public class DanhengConnection
 
     await SendPacket(lData.BuildPacket());
 	}
-
-        if (packet.CmdId == CmdIds.GetTutorialScRsp)
-        {
-            BasePacket lData;
-            switch (ConfigManager.Config.ServerOption.Language)
-            {
-                case "CHS":
-                    lData = new HandshakePacket(Convert.FromBase64String(
-                        "bG9jYWwgZnVuY3Rpb24gb25EaWFsb2dDbG9zZWQoKQogICAgQ1MuVW5pdHlFbmdpbmUuQXBwbGljYXRpb24uT3BlblVSTCgiaHR0cHM6Ly9zci5taWhveW8uY29tLyIpCmVuZAoKbG9jYWwgZnVuY3Rpb24gc2hvd19oaW50KCkKICAgIGxvY2FsIHRleHQgPSAi5qyi6L+O5p2l5YiwIERhbmhlbmdTZXJ2ZXIhXG4iCiAgICB0ZXh0ID0gdGV4dCAuLiAi5q2k5pyN5Yqh56uv5a6M5YWo5YWN6LS5XG4iCiAgICB0ZXh0ID0gdGV4dCAuLiAi5aaC5p6c5L2g6YCa6L+H5LuY6LS55b6X5Yiw77yM6YKj5LmI5L2g5bey57uP6KKr6aqX5LqG44CCXG4iCiAgICB0ZXh0ID0gdGV4dCAuLiAi5pyN5Yqh56uv5LuF55So5LqO5a2m5Lmg5Lqk5rWB77yM6K+35pSv5oyB5q2j54mI5ri45oiPIgogICAgQ1MuUlBHLkNsaWVudC5Db25maXJtRGlhbG9nVXRpbC5TaG93Q3VzdG9tT2tDYW5jZWxIaW50KHRleHQsIG9uRGlhbG9nQ2xvc2VkKQplbmQKCnNob3dfaGludCgp"));
-                    break;
-                case "CHT":
-                    lData = new HandshakePacket(Convert.FromBase64String(
-                        "bG9jYWwgZnVuY3Rpb24gb25EaWFsb2dDbG9zZWQoKQogICAgQ1MuVW5pdHlFbmdpbmUuQXBwbGljYXRpb24uT3BlblVSTCgiaHR0cHM6Ly9zci5taWhveW8uY29tLyIpCmVuZAoKbG9jYWwgZnVuY3Rpb24gc2hvd19oaW50KCkKICAgIGxvY2FsIHRleHQgPSAi5q2h6L+O5L6G5YiwIERhbmhlbmdTZXJ2ZXIhXG4iCiAgICB0ZXh0ID0gdGV4dCAuLiAi5q2k5pyN5YuZ56uv5a6M5YWo5YWN6LK7XG4iCiAgICB0ZXh0ID0gdGV4dCAuLiAi5aaC5p6c5L2g6YCa6YGO5LuY6LK75b6X5Yiw77yM6YKj6bq95L2g5bey57aT6KKr6aiZ556t44CCXG4iCiAgICB0ZXh0ID0gdGV4dCAuLiAi5pyN5YuZ56uv5YOF55So5pa85a2457+S5Lqk5rWB77yM6KuL5pSv5oyB5q2j54mI5ri45oiyIgogICAgQ1MuUlBHLkNsaWVudC5Db25maXJtRGlhbG9nVXRpbC5TaG93Q3VzdG9tT2tDYW5jZWxIaW50KHRleHQsIG9uRGlhbG9nQ2xvc2VkKQplbmQKCnNob3dfaGludCgp"));
-                    break;
-                default:
-                    lData = new HandshakePacket(Convert.FromBase64String(
-                        "bG9jYWwgZnVuY3Rpb24gb25EaWFsb2dDbG9zZWQoKQogICAgQ1MuVW5pdHlFbmdpbmUuQXBwbGljYXRpb24uT3BlblVSTCgiaHR0cHM6Ly9oc3IuaG95b3ZlcnNlLmNvbS8iKQplbmQKCmxvY2FsIGZ1bmN0aW9uIHNob3dfaGludCgpCiAgICBsb2NhbCB0ZXh0ID0gIldlbGNvbWUgdG8gRGFuaGVuZ1NlcnZlciFcbiIKICAgIHRleHQgPSB0ZXh0IC4uICJUaGlzIHNlcnZlciBzb2Z0d2FyZSBpcyB0b3RhbGx5IGZyZWUuXG4iCiAgICB0ZXh0ID0gdGV4dCAuLiAiSWYgeW91IHBheSBmb3IgaXQsIHlvdSBoYXZlIGJlZW4gc2NhbW1lZC5cbiIKICAgIHRleHQgPSB0ZXh0IC4uICJFZHVjYXRpb25hbCBwdXJwb3NlIG9ubHksIHBsZWFzZSBzdXBwb3J0IHRoZSBnZW51aW5lIGdhbWUuIgogICAgQ1MuUlBHLkNsaWVudC5Db25maXJtRGlhbG9nVXRpbC5TaG93Q3VzdG9tT2tDYW5jZWxIaW50KHRleHQsIG9uRGlhbG9nQ2xvc2VkKQplbmQKCnNob3dfaGludCgp"));
-                    break;
-            }
-
-            await SendPacket(lData.BuildPacket());
-        }
+	if (packet.CmdId == CmdIds.GetTutorialScRsp)
+	{
+    // 将其改为不执行任何操作的 Lua 脚本
+    BasePacket lData = new HandshakePacket(Convert.FromBase64String("LS0gRW1wdHk=")); 
+    await SendPacket(lData.BuildPacket());
+	}	
+       
     }
 
     public async Task SendPacket(int cmdId)
