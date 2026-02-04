@@ -28,7 +28,26 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
         }
         return new List<uint>();
     }
-
+	/// <summary>
+    /// 获取挑战列表/快照协议数据重构 (基于 3.7.0 暴力测试最终修正版)
+    /// 混淆类 FCIHIJLOMGA 字段业务映射说明:
+    /// </summary>
+    /* * * Tag 1  (HLIBIJFHHPG) : [核心] 转盘怪物内容池 (repeated uint32)。
+     * 必须填充当前 StageGroup 的 DisplayEventIDList，否则转盘头像为空。
+     * * * Tag 2  (ChallengeId) : 挑战关卡 ID (1-5)。对应 BoxingClubChallenge.json。
+     * * * Tag 3  (AvatarList)  : 选人记忆列表 (repeated uint32)。
+     * 记录玩家在该关卡上次使用的阵容，实现界面记忆功能。
+     * * * Tag 4  (HJMGLEMJHKG) : [关键] 当前关卡组 ID (StageGroupID)。
+     * 对应配置表的 StageGroupID (如 10, 11...)。客户端据此加载关卡元数据和背景。
+     * * * Tag 6  (MDLACHDKMPH) : [修正] 当前选定的出战阵容 (repeated uint32)。
+     * 控制选人界面中已上阵角色的头像显示。
+     * * * Tag 8  (LLFOFPNDAFG) : [修正] 赛季 ID (Season ID)。
+     * 对应活动赛季标识，通常下发 1 或配置中的 SeasonID。
+     * * * Tag 10 (APLKNJEGBKF) : 关卡完结标志 (bool)。
+     * 控制活动主界面关卡入口处是否渲染“已完成”的大勾图标。
+     * * * Tag 14 (HNPEAPPMGAA) : [进度] 当前关卡进度计数 (uint)。
+     * 控制匹配界面顶部显示的 "X/4" 文本，后端从 0 开始计数。
+     */
     public List<FCIHIJLOMGA> GetChallengeList()
     {
         var challengeInfos = new List<FCIHIJLOMGA>();
