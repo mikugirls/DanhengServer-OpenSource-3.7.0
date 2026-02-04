@@ -1,61 +1,98 @@
+using EggLink.DanhengServer.Database.Lineup;
+using EggLink.DanhengServer.Enums.Avatar;
+using EggLink.DanhengServer.GameServer.Game.Battle;
+using EggLink.DanhengServer.GameServer.Game.Battle.Custom;
+using EggLink.DanhengServer.GameServer.Game.Player;
+using EggLink.DanhengServer.Proto;
+using EggLink.DanhengServer.Util;
+
 namespace EggLink.DanhengServer.GameServer.Game.BoxingClub;
 
-public class BoxingClubInstance(PlayerInstance player, uint challengeId)
+public class BoxingClubInstance(PlayerInstance player, uint challengeId, List<uint> avatars)
 {
+    private static readonly Logger _log = new("BoxingClubInstance");
+    
     public PlayerInstance Player { get; } = player;
     public uint ChallengeId { get; } = challengeId;
-    public int CurrentRound { get; private set; } = 0; // 当前轮次
-    public List<uint> SelectedBuffs { get; } = []; // 已选共鸣
+    public List<uint> SelectedAvatars { get; } = avatars;
+    public List<uint> SelectedBuffs { get; } = new();
     
-    // 每一局的最大轮次（搏击俱乐部通常是 4 轮或 5 轮）
-    private const int MaxRounds = 4;
+    public int CurrentRoundIndex { get; set; } = 0;
+    public uint CurrentMatchEventId { get; set; } = 0;
+    public uint CurrentOpponentIndex { get; set; } = 0;
 
     /// <summary>
-    /// 处理战斗结算
+    /// 进入战斗：负责槽位 19 的写入、激活以及战斗实例构造
+    /// </summary>
+    public async ValueTask EnterStage()
+    {
+        if (CurrentMatchEventId == 0) return;
+
+        // 1. 获取 Stage 配置 (EventID * 10 + 世界等级)
+        int actualStageId = (int)(CurrentMatchEventId * 10) + Player.Data.WorldLevel;
+        if (!Data.GameData.StageConfigData.TryGetValue(actualStageId, out var stageConfig))
+        {
+            _log.Error($"无法找到 Stage 配置: {actualStageId}");
+            return;
+        }
+
+        // 2. 准备额外阵容 (Slot 19)
+        var boxingLineup = new List<LineupAvatarInfo>();
+        foreach (var id in SelectedAvatars)
+        {
+            var trial = Player.AvatarManager!.GetTrialAvatar((int)id);
+            // 关键：强制刷新试用角色的数值，防止等级为 0 导致 UI 不显示
+            trial?.CheckLevel(Player.Data.WorldLevel);
+
+            boxingLineup.Add(new LineupAvatarInfo
+            {
+                BaseAvatarId = trial?.BaseAvatarId ?? (int)id,
+                SpecialAvatarId = trial != null ? (int)id : 0
+            });
+        }
+
+        // 写入并激活槽位 19 (LineupBoxingClub)
+        Player.LineupManager!.SetExtraLineup(ExtraLineupType.LineupBoxingClub, boxingLineup);
+        await Player.LineupManager.SetExtraLineup(ExtraLineupType.LineupBoxingClub);
+
+        // 3. 构造战斗
+        var battleInstance = new BattleInstance(Player, Player.LineupManager.GetCurLineup()!, [stageConfig])
+        {
+            WorldLevel = Player.Data.WorldLevel,
+            EventId = (int)CurrentMatchEventId,
+            // 注入累加的 Buff (SelectedBuffs)
+            BoxingClubOptions = new BattleBoxingClubOptions(SelectedBuffs.ToList(), Player)
+        };
+
+        Player.BattleInstance = battleInstance;
+        
+        // 4. 发送进入战斗协议
+        await Player.SendPacket(new Server.Packet.Send.Scene.PacketSceneEnterStageScRsp(battleInstance));
+        Player.QuestManager?.OnBattleStart(battleInstance);
+        
+        _log.Info($"[Boxing] 玩家 {Player.Uid} 进入战斗，轮次索引: {CurrentRoundIndex}");
+    }
+
+    /// <summary>
+    /// 结算拦截：判断胜负并决定是否重置阵容
     /// </summary>
     public async ValueTask OnBattleEnd(PVEBattleResultCsReq req)
     {
         if (req.EndStatus == BattleEndStatus.BattleEndWin)
         {
-            CurrentRound++;
-            
-            if (CurrentRound >= MaxRounds)
-            {
-                // --- 全部打完，功德圆满 ---
-                await EndChallenge(true);
-            }
-            else
-            {
-                // --- 还没打完，弹出“共鸣选择”界面 ---
-                // 这里调用 Manager 生成三选一的快照
-                var manager = Player.GetManager<BoxingClubManager>();
-                var snapshot = manager?.ProcessChooseResonance(ChallengeId, CurrentRound);
-                if (snapshot != null)
-                {
-                    await Player.SendPacket(new PacketGetBoxingClubInfoScRsp(snapshot));
-                }
-            }
+            // 胜利：清空匹配状态，但不销毁 Instance，等待选 Buff 推进轮次
+            CurrentMatchEventId = 0;
+            CurrentOpponentIndex = 0;
+            _log.Info($"[Boxing] 战斗胜利，轮次 {CurrentRoundIndex} 结束。");
         }
         else
         {
-            // --- 输了或撤退，直接结束挑战 ---
-            await EndChallenge(false);
+            // 失败或退出：强制切回大世界阵容 (None)，并销毁本局实例
+            _log.Info($"[Boxing] 战斗中止/失败，正在重置阵容并销毁实例。");
+            await Player.LineupManager!.SetExtraLineup(ExtraLineupType.LineupNone);
+            
+            var manager = Player.GetManager<BoxingClubManager>();
+            if (manager != null) manager.ChallengeInstance = null;
         }
-    }
-
-    /// <summary>
-    /// 结束整个挑战
-    /// </summary>
-    private async ValueTask EndChallenge(bool isWin)
-    {
-        // 1. 核心逻辑：切回大世界阵容 (模仿忘却之庭)
-        // 这一步会让 CurExtraLineup 变回 -1，回到槽位 0
-        await Player.LineupManager!.SetExtraLineup(EggLink.DanhengServer.Enums.Avatar.ExtraLineupType.LineupNone);
-
-        // 2. 清理管理器中的实例引用
-        var manager = Player.GetManager<BoxingClubManager>();
-        if (manager != null) manager.ChallengeInstance = null;
-
-        Console.WriteLine($"[Boxing] 挑战结束。状态：{(isWin ? "全胜" : "中止")}。阵容已切回大世界。");
     }
 }
