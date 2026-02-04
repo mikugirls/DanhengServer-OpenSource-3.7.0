@@ -80,7 +80,7 @@ public class BoxingClubInstance(PlayerInstance player, uint challengeId, List<ui
     {
         if (req.EndStatus == BattleEndStatus.BattleEndWin)
         {
-            // 胜利：清空匹配状态，但不销毁 Instance，等待选 Buff 推进轮次
+            // 胜利：清空匹配状态
             CurrentMatchEventId = 0;
             CurrentOpponentIndex = 0;
             _log.Info($"[Boxing] 战斗胜利，轮次 {CurrentRoundIndex} 结束。");
@@ -91,8 +91,11 @@ public class BoxingClubInstance(PlayerInstance player, uint challengeId, List<ui
             _log.Info($"[Boxing] 战斗中止/失败，正在重置阵容并销毁实例。");
             await Player.LineupManager!.SetExtraLineup(ExtraLineupType.LineupNone);
             
-            var manager = Player.GetManager<BoxingClubManager>();
-            if (manager != null) manager.ChallengeInstance = null;
+            // 修正：直接访问 Player.BoxingClubManager 属性
+            if (Player.BoxingClubManager != null) 
+            {
+                Player.BoxingClubManager.ChallengeInstance = null;
+            }
         }
     }
 }
