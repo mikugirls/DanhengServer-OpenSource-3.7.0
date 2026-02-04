@@ -73,47 +73,64 @@ public class AvatarManager(PlayerInstance player) : BasePlayerManager(player)
     }
 
     public SpecialAvatarInfo? GetTrialAvatar(int avatarId, bool refresh = false)
+{
+    // 1. 缓存查找
+    var avatar = AvatarData.TrialAvatars.Find(avatar => avatar.SpecialAvatarId == avatarId);
+    if (avatar != null)
     {
-        var avatar = AvatarData.TrialAvatars.Find(avatar => avatar.SpecialAvatarId == avatarId);
-        if (avatar != null)
-        {
-            if (refresh)
-                AvatarData.TrialAvatars.Remove(avatar);
-            else
-                return avatar;
-        }
-
-        if (!GameData.SpecialAvatarData.TryGetValue(avatarId * 10 + 0, out var excel)) return null;
-
-        var baseAvatarId = excel.AvatarID;
-        if (GameData.MultiplePathAvatarConfigData.TryGetValue(baseAvatarId, out var multiple))
-            baseAvatarId = multiple.BaseAvatarID;
-        avatar = new SpecialAvatarInfo
-        {
-            SpecialAvatarId = excel.SpecialAvatarID,
-            AvatarId = excel.AvatarID,
-            BaseAvatarId = baseAvatarId,
-            Level = excel.Level,
-            Promotion = excel.Promotion
-        };
-
-        avatar.PathInfos.Add(excel.AvatarID, new PathInfo(excel.AvatarID)
-        {
-            Rank = excel.Rank,
-            EquipData = new ItemData
-            {
-                ItemId = excel.EquipmentID,
-                Level = excel.EquipmentLevel,
-                Promotion = excel.EquipmentPromotion,
-                Rank = excel.EquipmentRank
-            }
-        });
-
-        if (!GameData.AvatarConfigData.TryGetValue(avatar.BaseAvatarId, out _)) return avatar;
-        avatar.GetCurPathInfo().GetSkillTree();
-        AvatarData.TrialAvatars.Add(avatar);
-        return avatar;
+        if (refresh)
+            AvatarData.TrialAvatars.Remove(avatar);
+        else
+            return avatar;
     }
+
+    // 2. 核心修复：动态匹配 WorldLevel
+    int currentWorldLevel = Player.Data.WorldLevel;
+    
+    // 策略：先找当前世界等级对应的 ID (ID * 10 + WL)
+    if (!GameData.SpecialAvatarData.TryGetValue(avatarId * 10 + currentWorldLevel, out var excel)) 
+    {
+        // 兜底 A：找世界等级 0 的配置 (ID * 10 + 0)
+        if (!GameData.SpecialAvatarData.TryGetValue(avatarId * 10 + 0, out excel)) 
+        {
+            // 兜底 B：暴力遍历 (防止有些活动角色 ID 规律不符合 *10)
+            excel = GameData.SpecialAvatarData.Values.FirstOrDefault(x => x.SpecialAvatarID == avatarId);
+            
+            if (excel == null) return null; // 真的找不到了
+        }
+    }
+
+    // 3. 构造角色数据 (保持原样)
+    var baseAvatarId = excel.AvatarID;
+    if (GameData.MultiplePathAvatarConfigData.TryGetValue(baseAvatarId, out var multiple))
+        baseAvatarId = multiple.BaseAvatarID;
+
+    avatar = new SpecialAvatarInfo
+    {
+        SpecialAvatarId = excel.SpecialAvatarID,
+        AvatarId = excel.AvatarID,
+        BaseAvatarId = baseAvatarId,
+        Level = excel.Level,
+        Promotion = excel.Promotion
+    };
+
+    avatar.PathInfos.Add(excel.AvatarID, new PathInfo(excel.AvatarID)
+    {
+        Rank = excel.Rank,
+        EquipData = new ItemData
+        {
+            ItemId = excel.EquipmentID,
+            Level = excel.EquipmentLevel,
+            Promotion = excel.EquipmentPromotion,
+            Rank = excel.EquipmentRank
+        }
+    });
+
+    if (!GameData.AvatarConfigData.TryGetValue(avatar.BaseAvatarId, out _)) return avatar;
+    avatar.GetCurPathInfo().GetSkillTree();
+    AvatarData.TrialAvatars.Add(avatar);
+    return avatar;
+}
 
     public FormalAvatarInfo? GetHero()
     {
