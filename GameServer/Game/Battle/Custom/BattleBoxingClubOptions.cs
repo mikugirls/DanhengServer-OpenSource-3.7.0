@@ -8,51 +8,26 @@ using LineupInfo = EggLink.DanhengServer.Database.Lineup.LineupInfo;
 
 namespace EggLink.DanhengServer.GameServer.Game.Battle.Custom;
 
-public class BattleBoxingClubOptions(List<AvatarSceneInfo> customAvatars, List<uint> selectedBuffs, PlayerInstance player)
+public class BattleBoxingClubOptions(List<uint> selectedBuffs, PlayerInstance player)
 {
-    public List<AvatarSceneInfo> CustomAvatars { get; set; } = customAvatars;
     public List<uint> SelectedBuffs { get; set; } = selectedBuffs;
     public PlayerInstance Player { get; set; } = player;
 
     public void HandleProto(SceneBattleInfo proto, BattleInstance battle)
     {
-        // 1. 创建临时的编队上下文 (模仿 GridFight)
-        // 这一步是为了让 ToBattleProto 内部计算属性时有正确的 Lineup 参考
-        var tempLineup = new LineupInfo
-        {
-            BaseAvatars = CustomAvatars.Select(x => new LineupAvatarInfo
-            {
-                BaseAvatarId = x.AvatarInfo.BaseAvatarId,
-                SpecialAvatarId = x.AvatarInfo is SpecialAvatarInfo s ? s.SpecialAvatarId : 0
-            }).ToList(),
-            LineupType = (int)ExtraLineupType.LineupBoxingClub
-        };
+        // 角色列表 (BattleAvatarList) 不再在这里处理！
+        // 因为已经在 EnterBoxingClubStage 里切换了 ExtraLineupType。
+        // BattleInstance.ToProto 的默认逻辑会自动调用 GetBattleAvatars() 
+        // 从槽位 19 (LineupBoxingClub) 里抓取正确的数据。
 
-        // 2. 注入阵容
-        foreach (var avatarScene in CustomAvatars)
-        {
-            // 确保角色状态全满
-            avatarScene.AvatarInfo.SetCurHp(10000, true);
-            avatarScene.AvatarInfo.SetCurSp(10000, true);
-
-            var battleAvatar = avatarScene.AvatarInfo.ToBattleProto(
-                new PlayerDataCollection(Player.Data, Player.InventoryManager!.Data, tempLineup),
-                avatarScene.AvatarType);
-            
-            // 按照选人顺序排列 (0, 1, 2, 3)
-            battleAvatar.Index = (uint)CustomAvatars.IndexOf(avatarScene);
-            proto.BattleAvatarList.Add(battleAvatar);
-        }
-
-        // 3. 注入搏击俱乐部共鸣增益
+        // 我们这里只注入搏击俱乐部专属的 Buff
         foreach (var buffId in SelectedBuffs)
         {
-            // 每一个 Resonance 其实就是一个全局 BattleBuff
             proto.BuffList.Add(new BattleBuff
             {
                 Id = buffId,
                 Level = 1,
-                OwnerIndex = 0xFFFFFFFF // 官方常用此值表示全队收益
+                OwnerIndex = 0xFFFFFFFF 
             });
         }
     }
