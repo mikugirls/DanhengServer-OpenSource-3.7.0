@@ -160,88 +160,72 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
         return snapshot;
     }
 
-    public async ValueTask EnterBoxingClubStage(uint challengeId)
+   public async ValueTask EnterBoxingClubStage(uint challengeId)
     {
-        // 1. 同时检查 Player、场景实例和编队管理器
-    	if (Player?.SceneInstance == null || Player.LineupManager == null || Player.AvatarManager == null) 
-    	{	
-        _log.Error("Player state invalid: SceneInstance, LineupManager, or AvatarManager is null.");
-        return;
-    	}
+        // 1. 基础校验
+        if (Player?.SceneInstance == null || Player.LineupManager == null || Player.AvatarManager == null) 
+        {	
+            _log.Error("Player state invalid: SceneInstance, LineupManager, or AvatarManager is null.");
+            return;
+        }
         if (this.CurrentChallengeId != challengeId || this.CurrentMatchEventId == 0) return;
 
+        // 2. 获取关卡配置
         int actualStageId = (int)(this.CurrentMatchEventId * 10) + Player.Data.WorldLevel;
-        if (EnableLog) _log.Info($"Starting Battle: StageID {actualStageId}");
-
         if (!GameData.StageConfigData.TryGetValue(actualStageId, out var stageConfig))
         {
-            if (EnableLog) _log.Error($"StageID {actualStageId} not found!");
+            _log.Error($"StageID {actualStageId} not found!");
             return;
         }
 
-        int turnLimit = 30;
-        if (GameData.BoxingClubChallengeData.TryGetValue((int)challengeId, out var config))
-        {
-            turnLimit = config.ChallengeTurnLimit > 0 ? config.ChallengeTurnLimit : 30;
-        }
-
-        // --- [核心修复：构建临时阵容与插件] ---
-        var avatarList = new List<AvatarSceneInfo>();
-        var lineupAvatars = new List<LineupAvatarInfo>(); // 用于构建临时编队上下文
-
+        // 3. 【核心改变】构建原生 LineupAvatarInfo 列表
+        // 模仿忘却之庭，我们将选中的角色真正塞进 LineupManager 的数据库槽位
+        var boxingLineup = new List<LineupAvatarInfo>();
         foreach (var id in LastMatchAvatars)
         {
-            BaseAvatarInfo? avatarData = (BaseAvatarInfo?)Player.AvatarManager!.GetFormalAvatar((int)id) ?? 
-                                         Player.AvatarManager!.GetTrialAvatar((int)id);
-
-            if (avatarData != null)
-            {
-                AvatarType type = (avatarData is SpecialAvatarInfo) ? AvatarType.AvatarTrialType : AvatarType.AvatarFormalType;
-                
-                // 1. 构造场景实体 (用于模型显示)
-                var sceneInfo = new AvatarSceneInfo(avatarData, type, Player)
-                {
-                    EntityId = ++Player.SceneInstance.LastEntityId 
-                };
-                avatarList.Add(sceneInfo);
-
-                // 2. 构造编队元数据 (用于 ToBattleProto 的上下文)
-                lineupAvatars.Add(new LineupAvatarInfo {
-                    BaseAvatarId = (int)id,
-                    SpecialAvatarId = (type == AvatarType.AvatarTrialType) ? (int)id : 0
-                });
-
-                // 3. 强制满血满能进场
-                avatarData.SetCurHp(10000, true);
-                avatarData.SetCurSp(10000, true);
-            }
+            // 查找对应的角色数据（自动处理正式或试用）
+            var trial = Player.AvatarManager!.GetTrialAvatar((int)id);
+            
+            boxingLineup.Add(new LineupAvatarInfo 
+            { 
+                // 如果是试用角色，BaseAvatarId 会被自动映射（如 3041005 -> 1005）
+                BaseAvatarId = trial?.BaseAvatarId ?? (int)id, 
+                SpecialAvatarId = trial != null ? (int)id : 0 
+            });
         }
 
-        // --- [学习 GridFight：装载劫持插件] ---
-        // 先给 LineupManager 设置一个临时编队类型，确保 IsExtraLineup 为 true
-        Player.LineupManager.SetExtraLineup(ExtraLineupType.LineupBoxingClub, lineupAvatars);
-        var curLineup = Player.LineupManager.GetCurLineup();
+        // 4. 【模仿忘却之庭】执行槽位切换
+        // Step A: 将这 4 个人写入 LineupBoxingClub (槽位 19)
+        Player.LineupManager.SetExtraLineup(ExtraLineupType.LineupBoxingClub, boxingLineup);
+        
+        // Step B: 激活该额外编队，这会让 Player.LineupManager.GetCurLineup() 指向槽位 19
+        await Player.LineupManager.SetExtraLineup(ExtraLineupType.LineupBoxingClub);
 
-        BattleInstance battleInstance = new(Player, curLineup!, new List<StageConfigExcel> { stageConfig })
+        // 5. 创建战斗实例 (此时构造函数拿到的 curLineup 已经是槽位 19 的搏击队了)
+        int turnLimit = 30;
+        if (GameData.BoxingClubChallengeData.TryGetValue((int)challengeId, out var challengeConfig))
+        {
+            turnLimit = challengeConfig.ChallengeTurnLimit > 0 ? challengeConfig.ChallengeTurnLimit : 30;
+        }
+
+        BattleInstance battleInstance = new(Player, Player.LineupManager.GetCurLineup()!, [stageConfig])
         {
             WorldLevel = Player.Data.WorldLevel,
             EventId = (int)this.CurrentMatchEventId,
-            RoundLimit = turnLimit,
-            // 注入劫持选项，把我们准备好的 avatarList 传给 BattleInstance.ToProto
-            BoxingClubOptions = new BattleBoxingClubOptions(avatarList, new List<uint>(), Player) 
+            RoundLimit = (uint)turnLimit,
+            // 如果你还需要注入“共鸣 Buff”，可以在这里保留 Options，但不再传自定义角色列表
+            BoxingClubOptions = new BattleBoxingClubOptions([], this.CurrentChallengeBuffs.ToList(), Player)
         };
 
         Player.BattleInstance = battleInstance;
         
-        // 发送进入战斗包 (4283)
+        // 6. 发送进入战斗包
         await Player.SendPacket(new PacketSceneEnterStageScRsp(battleInstance));
 
-        // --- [重要：严禁调用 OnEnterStage()] ---
-        // Player.SceneInstance?.OnEnterStage(); // 必须注释掉！否则会刷掉刚才生成的临时实体
-
+        // 重要：不需要调用 SyncLineup 或 OnEnterStage，因为战斗协议会处理一切
         Player.QuestManager?.OnBattleStart(battleInstance);
 
-        if (EnableLog) _log.Debug("Boxing Club Battle Started with custom hijacked lineup.");
+        if (EnableLog) _log.Debug($"[Boxing] Battle started using native ExtraLineup (Slot 19).");
     }
 	/// <summary>
     /// 处理协议 4281 (ChooseBoxingClubResonanceCsReq)
