@@ -214,7 +214,9 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
             EventId = (int)this.CurrentMatchEventId,
             RoundLimit = turnLimit,
             // 如果你还需要注入“共鸣 Buff”，可以在这里保留 Options，但不再传自定义角色列表
-            BoxingClubOptions = new BattleBoxingClubOptions([], this.CurrentChallengeBuffs.ToList(), Player)
+            // 错误：传入了三个参数，其中第一个可能是个空的 List
+			// 正确：只传入 Buff 列表和 Player 实例
+			BoxingClubOptions = new BattleBoxingClubOptions(this.CurrentChallengeBuffs.ToList(), Player)
         };
 
         Player.BattleInstance = battleInstance;
