@@ -135,7 +135,7 @@ public class ShopService(PlayerInstance player) : BasePlayerManager(player)
                     uint newExp = oldExp + addExp;
                     
                     Player.CityShopData.SetExp(shopId, newExp);
-                    Player.CityShopData.Save(); // 立即持久化到数据库
+                    DatabaseHelper.ToSaveUidList.SafeAdd(Player.Uid);
 
                     if (GlobalDebug.EnableVerboseLog)
                         Console.WriteLine($"[SHOP_DEBUG] 城市商店经验增加 | ShopID: {shopId} | 代币: {cost.Key} | +{addExp} | 当前总经验: {newExp}");
