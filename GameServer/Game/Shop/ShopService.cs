@@ -118,6 +118,34 @@ public class ShopService(PlayerInstance player) : BasePlayerManager(player)
             if (GlobalDebug.EnableVerboseLog)
                 Console.WriteLine($"[SHOP_DEBUG] 同步完成 | 背包更新项数:{syncList.Count} | 弹窗显示项数:{displayItems.Count}");
         }
+        // 5.5. 城市商店经验逻辑 (新增)
+        // 检查该商店是否属于城市商店配置
+        if (GameData.CityShopConfigData.TryGetValue(shopId, out var cityConfig))
+        {
+            // 遍历刚才购买消耗的货币，寻找是否包含该城市指定的代币 (ItemID)
+            foreach (var cost in goods.CostList)
+            {
+                if (cost.Key == cityConfig.ItemID)
+                {
+                    // 计算本次增加的经验：单价 * 购买数量
+                    uint addExp = (uint)(cost.Value * count);
+                    
+                    // 从你刚才定义的独立数据库类 CityShopData 中获取并更新
+                    uint oldExp = Player.CityShopData!.GetExp(shopId);
+                    uint newExp = oldExp + addExp;
+                    
+                    Player.CityShopData.SetExp(shopId, newExp);
+                    Player.CityShopData.Save(); // 立即持久化到数据库
+
+                    if (GlobalDebug.EnableVerboseLog)
+                        Console.WriteLine($"[SHOP_DEBUG] 城市商店经验增加 | ShopID: {shopId} | 代币: {cost.Key} | +{addExp} | 当前总经验: {newExp}");
+
+                    // 发送 1594 协议通知：让客户端左侧进度条和等级实时刷新
+                    await Player.SendPacket(new PacketCityShopInfoScNotify(Player, shopId));
+                    break; 
+                }
+            }
+        }
 
         // 6. 任务进度触发
         await Player.MissionManager!.HandleFinishType(MissionFinishTypeEnum.BuyShopGoods, goods);
