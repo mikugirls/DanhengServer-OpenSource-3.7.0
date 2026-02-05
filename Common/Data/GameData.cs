@@ -341,15 +341,15 @@ public static class GameData
 
     #endregion
     #region Item Exchange
-	// 基础字典：Key 是 (GroupID << 16) | Level
-	public static Dictionary<int, CityShopRewardListExcel> CityShopRewardListData  { get; private set; } = [];
+	// 城市商店基础配置：ShopID -> Config
+    public static Dictionary<int, CityShopConfigExcel> CityShopConfigData { get; private set; } = [];
 
-	// 分组字典：方便通过 GroupID 直接获取该商店的所有等级要求
-	public static Dictionary<int, List<CityShopRewardListExcel>> CityShopRewardGroupData { get; private set; }  = [];
-    public static Dictionary<int, ShopConfigExcel> ShopConfigData { get; private set; } = [];
-	// 添加城市商店奖励分组字典 (用于按 GroupID 快速获取等级列表)
-    public static Dictionary<int, List<Excel.CityShopRewardListExcel>> CityShopRewardGroupData { get; private set; } = [];
-    public static Dictionary<int, RollShopConfigExcel> RollShopConfigData { get; private set; } = [];
+    // 城市商店奖励列表：(GroupID << 16 | Level) -> RewardEntry
+    public static Dictionary<int, CityShopRewardListExcel> CityShopRewardListData { get; private set; } = [];
+
+    // 城市商店奖励分组：GroupID -> List<RewardEntry> (唯一一个，删掉多余的)
+    public static Dictionary<int, List<CityShopRewardListExcel>> CityShopRewardGroupData { get; private set; } = [];
+	public static Dictionary<int, RollShopConfigExcel> RollShopConfigData { get; private set; } = [];
     public static Dictionary<int, RollShopRewardExcel> RollShopRewardData { get; private set; } = [];
     public static Dictionary<int, ItemComposeConfigExcel> ItemComposeConfigData { get; private set; } = [];
 
