@@ -47,6 +47,7 @@ using EggLink.DanhengServer.GameServer.Game.Expedition;
 using EggLink.DanhengServer.GameServer.Server.Packet.Send.Expedition;
 // 添加这一行引用
 using EggLink.DanhengServer.GameServer.Game.BoxingClub;
+using EggLink.DanhengServer.Database.Shop;
 
 namespace EggLink.DanhengServer.GameServer.Game.Player;
 
