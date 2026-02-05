@@ -284,6 +284,15 @@ public class BattleInstance(PlayerInstance player, LineupInfo lineup, List<Stage
 		else if (BoxingClubOptions != null) {
     	BoxingClubOptions.HandleProto(proto, this); // 运行你的新插件
     	FillMonsterWaves(proto); // 确保怪物波次也被填充
+		// 3. 【核心修正】在联赛模式分支内手动触发角色注入
+        // 这样可以确保客户端收到的 SceneBattleInfo 包含角色数据，否则战斗内角色将不显示
+        var avatars = GetBattleAvatars();
+        foreach (var avatar in avatars)
+        {
+            proto.BattleAvatarList.Add(avatar.AvatarInfo.ToBattleProto(
+                new PlayerDataCollection(Player.Data, Player.InventoryManager!.Data, Lineup), 
+                avatar.AvatarType));
+        }	
 		}
         else
         {
