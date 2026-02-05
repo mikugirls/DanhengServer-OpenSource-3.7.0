@@ -341,7 +341,11 @@ public static class GameData
 
     #endregion
     #region Item Exchange
+	// 基础字典：Key 是 (GroupID << 16) | Level
+	public static Dictionary<int, CityShopRewardListExcel> CityShopRewardListData  { get; private set; } = [];
 
+	// 分组字典：方便通过 GroupID 直接获取该商店的所有等级要求
+	public static Dictionary<int, List<CityShopRewardListExcel>> CityShopRewardGroupData { get; private set; }  = [];
     public static Dictionary<int, ShopConfigExcel> ShopConfigData { get; private set; } = [];
     public static Dictionary<int, RollShopConfigExcel> RollShopConfigData { get; private set; } = [];
     public static Dictionary<int, RollShopRewardExcel> RollShopRewardData { get; private set; } = [];
