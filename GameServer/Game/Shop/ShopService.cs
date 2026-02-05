@@ -6,6 +6,7 @@ using EggLink.DanhengServer.GameServer.Game.Player;
 using EggLink.DanhengServer.Util; // 引用 GlobalDebug
 // 在 ShopService.cs 顶部添加
 using EggLink.DanhengServer.GameServer.Server.Packet.Send.Shop;
+using EggLink.DanhengServer.Database; // 添加这一行
 namespace EggLink.DanhengServer.GameServer.Game.Shop;
 
 public class ShopService(PlayerInstance player) : BasePlayerManager(player)
