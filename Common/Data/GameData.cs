@@ -349,6 +349,10 @@ public static class GameData
 
     // 城市商店奖励分组：GroupID -> List<RewardEntry> (唯一一个，删掉多余的)
     public static Dictionary<int, List<CityShopRewardListExcel>> CityShopRewardGroupData { get; private set; } = [];
+	// --- 基础商店相关 (General Shop) - 修复你报错的地方 ---
+    // 确保这里的名称是 ShopConfigData，且类型与你的 ShopConfigExcel.cs 匹配
+    public static Dictionary<int, ShopConfigExcel> ShopConfigData { get; private set; } = [];
+    public static Dictionary<int, EShopGoodsConfigExcel> ShopGoodsConfigData { get; private set; } = [];
 	public static Dictionary<int, RollShopConfigExcel> RollShopConfigData { get; private set; } = [];
     public static Dictionary<int, RollShopRewardExcel> RollShopRewardData { get; private set; } = [];
     public static Dictionary<int, ItemComposeConfigExcel> ItemComposeConfigData { get; private set; } = [];
