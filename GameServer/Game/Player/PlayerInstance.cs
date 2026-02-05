@@ -126,6 +126,7 @@ public partial class PlayerInstance(PlayerData data)
     public FriendRecordData? FriendRecordData { get; private set; }
     public SceneData? SceneData { get; private set; }
 	public ExpeditionData? ExpeditionData { get; private set; } // 添加这一行
+	public CityShopData? CityShopData { get; private set; }
     public HeartDialData? HeartDialData { get; private set; }
     public TutorialData? TutorialData { get; private set; }
     public TutorialGuideData? TutorialGuideData { get; private set; }
@@ -228,6 +229,7 @@ public partial class PlayerInstance(PlayerData data)
         BattleCollegeData = InitializeDatabase<BattleCollegeData>();
         FriendRecordData = InitializeDatabase<FriendRecordData>();
 		ExpeditionData = InitializeDatabase<ExpeditionData>(); // 添加这一行
+		CityShopData = InitializeDatabase<CityShopData>();
         Components.Add(new SwitchHandComponent(this));
         
         if ((int)(ServerPrefsData.Version * 1000) != GameConstants.GameVersionInt)
