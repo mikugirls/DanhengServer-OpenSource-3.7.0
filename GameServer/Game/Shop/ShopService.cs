@@ -124,4 +124,24 @@ public class ShopService(PlayerInstance player) : BasePlayerManager(player)
 
         return displayItems;
     }
+    // --- 核心计算逻辑 ---
+    public uint CalculateCityLevel(int shopId)
+    {
+        // 1. 从刚才定义的数据库类中拿总经验
+        uint totalExp = Player.CityShopData?.GetExp(shopId) ?? 0;
+
+        // 2. 获取配置
+        if (!GameData.CityShopConfigData.TryGetValue(shopId, out var config)) return 1;
+        if (!GameData.CityShopRewardGroupData.TryGetValue(config.RewardListGroupID, out var rewards)) return 1;
+
+        // 3. 计算当前等级
+        uint level = 1;
+        foreach (var reward in rewards.OrderBy(x => x.Level))
+        {
+            if (totalExp >= reward.TotalItem) level = (uint)reward.Level;
+            else break;
+        }
+        return level;
+    }
+    
 }
