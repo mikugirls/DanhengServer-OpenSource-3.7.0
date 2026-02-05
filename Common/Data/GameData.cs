@@ -347,6 +347,8 @@ public static class GameData
 	// 分组字典：方便通过 GroupID 直接获取该商店的所有等级要求
 	public static Dictionary<int, List<CityShopRewardListExcel>> CityShopRewardGroupData { get; private set; }  = [];
     public static Dictionary<int, ShopConfigExcel> ShopConfigData { get; private set; } = [];
+	// 添加城市商店奖励分组字典 (用于按 GroupID 快速获取等级列表)
+    public static Dictionary<int, List<Excel.CityShopRewardListExcel>> CityShopRewardGroupData { get; private set; } = [];
     public static Dictionary<int, RollShopConfigExcel> RollShopConfigData { get; private set; } = [];
     public static Dictionary<int, RollShopRewardExcel> RollShopRewardData { get; private set; } = [];
     public static Dictionary<int, ItemComposeConfigExcel> ItemComposeConfigData { get; private set; } = [];
