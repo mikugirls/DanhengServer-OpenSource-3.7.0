@@ -78,8 +78,8 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
             foreach (var trialId in config.SpecialAvatarIDList)
             {
                 // 1. 确保服务器为这些试用 ID 生成了内存数据（供后续详情请求使用）
-                Player.AvatarManager!.GetTrialAvatar(trialId);
-
+                // 显式转换为 int 以匹配 GetTrialAvatar 的参数要求
+				Player.AvatarManager!.GetTrialAvatar((int)trialId);
                 // 2. 直接 Add 到当前关卡的 avatar_list 字段中
                 if (!info.AvatarList.Contains((uint)trialId))
                 {
