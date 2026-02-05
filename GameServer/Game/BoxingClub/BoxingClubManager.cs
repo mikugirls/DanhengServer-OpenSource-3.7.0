@@ -32,21 +32,32 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
     /// 获取挑战列表/快照协议数据重构 (基于 3.7.0 暴力测试最终修正版)
     /// 混淆类 FCIHIJLOMGA 字段业务映射说明:
     /// </summary>
-    /* * * Tag 1  (HLIBIJFHHPG) : [核心] 转盘怪物内容池 (repeated uint32)。
-     * 必须填充当前 StageGroup 的 DisplayEventIDList，否则转盘头像为空。
-     * * * Tag 2  (ChallengeId) : 挑战关卡 ID (1-5)。对应 BoxingClubChallenge.json。
-     * * * Tag 3  (AvatarList)  : 选人记忆列表 (repeated uint32)。
-     * 记录玩家在该关卡上次使用的阵容，实现界面记忆功能。
-     * * * Tag 4  (HJMGLEMJHKG) : [关键] 当前关卡组 ID (StageGroupID)。
-     * 对应配置表的 StageGroupID (如 10, 11...)。客户端据此加载关卡元数据和背景。
-     * * * Tag 6  (MDLACHDKMPH) : [修正] 当前选定的出战阵容 (repeated uint32)。
-     * 控制选人界面中已上阵角色的头像显示。
-     * * * Tag 8  (LLFOFPNDAFG) : [修正] 赛季 ID (Season ID)。
-     * 对应活动赛季标识，通常下发 1 或配置中的 SeasonID。
-     * * * Tag 10 (APLKNJEGBKF) : 关卡完结标志 (bool)。
+   /// <summary>
+    /// 获取挑战列表/快照协议数据重构 (基于 3.7.0 磐岩镇超级联赛最终修正版)
+    /// 混淆类 FCIHIJLOMGA 字段业务映射及逻辑说明:
+    /// </summary>
+    /* * * * Tag 1  (HLIBIJFHHPG) : [核心] 转盘怪物内容池 (repeated uint32)。
+     * 必须填充当前 StageGroup 的 DisplayEventIDList 全集。
+     * 注意：若只填单个 ID，客户端会因数组长度不足导致转盘动画跳过或 UI 报错。
+     * * * * Tag 2  (ChallengeId) : 挑战关卡 ID (1-5)。
+     * 对应 BoxingClubChallenge.json 配置。
+     * * * * Tag 3  (AvatarList)  : 选人记忆列表 (repeated uint32)。
+     * 记录玩家在该关卡上次使用的阵容，实现 UI 界面记忆功能。
+     * * * * Tag 4  (HJMGLEMJHKG) : [关键] 当前关卡组 ID (StageGroupID)。
+     * 对应配置表的 StageGroupID (如 10, 11...)。
+     * 核心逻辑：第一轮开始时确定的 ID，后续轮次【必须固定】。
+     * 组ID若发生变化，客户端会重新加载场景背景，导致 UI 转盘动画中断或闪烁。
+     * * * * Tag 6  (MDLACHDKMPH) : [修正] 当前选定的出战阵容 (repeated uint32)。
+     * 控制选人界面中已上阵角色的头像显示，确保战斗前后阵容一致。
+     * * * * Tag 8  (LLFOFPNDAFG) : [修正] 赛季 ID (Season ID)。
+     * 对应活动赛季标识。固定下发 1 或配置表中的 SeasonID，代表当前活动所属赛季。
+     * * * * Tag 10 (APLKNJEGBKF) : 关卡完结标志 (bool)。
      * 控制活动主界面关卡入口处是否渲染“已完成”的大勾图标。
-     * * * Tag 14 (HNPEAPPMGAA) : [进度] 当前关卡进度计数 (uint)。
-     * 控制匹配界面顶部显示的 "X/4" 文本，后端从 0 开始计数。
+     * 当第四轮战斗结束且领奖后，需设为 true 以持久化完成状态。
+     * * * * Tag 14 (HNPEAPPMGAA) : [进度] 当前关卡进度计数 (uint)。
+     * UI 翻页的核心开关。后端从 0 开始计数（界面显示 1/4）。
+     * 打完第 1 轮后发 1（显示 2/4），以此类推。
+     * 只有此值发生递增位移，客户端才会启动转盘动画并滚动至下一位对手。
      */
     public List<FCIHIJLOMGA> GetChallengeList()
     {
@@ -106,61 +117,50 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
         return challengeInfos;
     }
 
-   public FCIHIJLOMGA ProcessMatchRequest(MatchBoxingClubOpponentCsReq req)
+ public FCIHIJLOMGA ProcessMatchRequest(MatchBoxingClubOpponentCsReq req)
 {
-    // 1. 初始化实例
+    // 1. 如果是第一轮初始化
     if (ChallengeInstance == null)
     {
         var safeAvatarList = new List<uint>();
         if (req.MDLACHDKMPH != null) safeAvatarList.AddRange(req.MDLACHDKMPH.Select(a => a.AvatarId));
         ChallengeInstance = new BoxingClubInstance(Player, req.ChallengeId, safeAvatarList);
     }
+    else 
+    {
+        // 2. 如果是后续轮次（OnBattleEnd触发），确保不丢失已选阵容
+        // 只有当请求带了新阵容时才更新，否则保持原样
+        if (req.MDLACHDKMPH != null && req.MDLACHDKMPH.Count > 0)
+        {
+            ChallengeInstance.SelectedAvatars.Clear();
+            ChallengeInstance.SelectedAvatars.AddRange(req.MDLACHDKMPH.Select(a => a.AvatarId));
+        }
+    }
 
+    // 3. 执行核心匹配计算 (这一步必须确保使用的是最新的 ChallengeInstance.CurrentRoundIndex)
     uint currentGroupId = 0;
     uint targetEventId = 0;
 
-    if (GameData.BoxingClubChallengeData.TryGetValue((int)req.ChallengeId, out var config))
+    if (GameData.BoxingClubChallengeData.TryGetValue((int)ChallengeInstance.ChallengeId, out var config))
     {
-        // 根据当前轮次 (0, 1, 2...) 获取 StageGroupID (如 10, 11...)
-        if (config.StageGroupList != null && ChallengeInstance.CurrentRoundIndex < config.StageGroupList.Count)
+        int roundIdx = ChallengeInstance.CurrentRoundIndex; // 这里已经是 1 了
+        if (config.StageGroupList != null && roundIdx < config.StageGroupList.Count)
         {
-            currentGroupId = (uint)config.StageGroupList[ChallengeInstance.CurrentRoundIndex];
+            currentGroupId = (uint)config.StageGroupList[roundIdx]; // 积分赛1这里应该是 11
             
             if (GameData.BoxingClubStageGroupData.TryGetValue((int)currentGroupId, out var groupConfig))
             {
-                int roundIdx = ChallengeInstance.CurrentRoundIndex;
-                int opponentIndex = 1; // 临时变量，用于确定 EventID
-
-                // 核心逻辑：如果是固定权重 9999
-                if (groupConfig.Weight >= 9999)
-                {
-                    // 从 DisplayIndexList [9, 5, 1, 12] 中根据轮次取值
-                    if (groupConfig.DisplayIndexList != null && roundIdx < groupConfig.DisplayIndexList.Count)
-                    {
-                        opponentIndex = groupConfig.DisplayIndexList[roundIdx];
-                    }
-                }
-                else
-                {
-                    // 否则走随机逻辑
-                    int displayCount = groupConfig.DisplayEventIDList?.Count ?? 0;
-                    if (displayCount > 0) opponentIndex = new Random().Next(1, displayCount + 1);
-                }
-
-                // 映射到具体的战斗事件 ID
-                if (groupConfig.DisplayEventIDList != null && opponentIndex > 0 && opponentIndex <= groupConfig.DisplayEventIDList.Count)
-                {
-                    targetEventId = (uint)groupConfig.DisplayEventIDList[opponentIndex - 1];
-                }
+                // 简化逻辑：直接取该组配置的 EventID
+                targetEventId = (uint)(groupConfig.DisplayEventIDList?.FirstOrDefault() ?? 0);
             }
         }
     }
 
-    // 更新实例：只需要记录 GroupID 和 最终战斗的 EventID
-    ChallengeInstance.CurrentStageGroupId = currentGroupId; // 例如 10
-    ChallengeInstance.CurrentMatchEventId = targetEventId;   // 例如 304009
+    // 4. 强制写入实例
+    ChallengeInstance.CurrentStageGroupId = currentGroupId;
+    ChallengeInstance.CurrentMatchEventId = targetEventId;
 
-    if (EnableLog) _log.Info($"[Match] 轮次: {ChallengeInstance.CurrentRoundIndex}, StageGroupID: {currentGroupId}, TargetEventID: {targetEventId}");
+    _log.Info($"[Match-Check] 轮次: {ChallengeInstance.CurrentRoundIndex}, 分组: {currentGroupId}, 对手: {targetEventId}");
     
     return ConstructSnapshot(ChallengeInstance);
 }
@@ -249,13 +249,25 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
         return new FCIHIJLOMGA { ChallengeId = challengeId, LLFOFPNDAFG = 1 };
     }
 
-    public FCIHIJLOMGA? ProcessChooseResonance(uint challengeId, uint resonanceId)
-    {
-        if (ChallengeInstance == null) return null;
-        if (resonanceId != 0) ChallengeInstance.SelectedBuffs.Add(resonanceId);
-        ChallengeInstance.CurrentRoundIndex++;
-        ChallengeInstance.CurrentMatchEventId = 0;
-        ChallengeInstance.CurrentOpponentIndex = 0;
-        return ConstructSnapshot(ChallengeInstance);
-    }
+   public FCIHIJLOMGA? ProcessChooseResonance(uint challengeId, uint resonanceId)
+{
+    if (ChallengeInstance == null) return null;
+    
+    _log.Info($"[Boxing] 选Buff开始，ID: {resonanceId}");
+
+    // 1. 记录 Buff
+    if (resonanceId != 0) ChallengeInstance.SelectedBuffs.Add(resonanceId);
+
+    // 2. 先增加轮次进度 (重要：先加进度，ProcessMatchRequest 才会取到下一轮的 GroupID)
+    ChallengeInstance.CurrentRoundIndex++;
+    
+    // 3. 【核心修正】模拟匹配请求，为下一轮生成 MatchEventId 和 StageGroupId
+    var mockReq = new MatchBoxingClubOpponentCsReq { ChallengeId = challengeId };
+    ProcessMatchRequest(mockReq); 
+
+    _log.Info($"[Boxing] 选Buff完成。进入第 {ChallengeInstance.CurrentRoundIndex} 轮, 新对手ID: {ChallengeInstance.CurrentMatchEventId}");
+
+    // 4. 返回包含新对手池和新进度的快照
+    return ConstructSnapshot(ChallengeInstance);
+}
 }

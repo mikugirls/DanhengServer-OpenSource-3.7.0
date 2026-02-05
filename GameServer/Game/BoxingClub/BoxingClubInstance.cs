@@ -108,44 +108,57 @@ public class BoxingClubInstance(PlayerInstance player, uint challengeId, List<ui
     /// <summary>
     /// 结算拦截：判断胜负并决定是否重置阵容
     /// </summary>
-   public async ValueTask OnBattleEnd(PVEBattleResultCsReq req)
-{
-    if (req.EndStatus == BattleEndStatus.BattleEndWin)
-    {
-        // 1. 逻辑推进
-        CurrentMatchEventId = 0;
-        CurrentOpponentIndex = 0;
-        CurrentRoundIndex++; 
 
-        _log.Info($"[Boxing] 战斗胜利，轮次推进至 {CurrentRoundIndex}。");
+ 
+    public async ValueTask OnBattleEnd(PVEBattleResultCsReq req)
+{
+   if (req.EndStatus == BattleEndStatus.BattleEndWin)
+    {
+        // 1. 推进轮次进度
+        this.CurrentRoundIndex++; 
 
         if (Player.BoxingClubManager != null)
         {
-            // 2. 构造快照
-            var snapshot = Player.BoxingClubManager.ConstructSnapshot(this);
-            
-            // 3. 【核心修正】安全的位置维持
-            // 既然 BaseGameEntity 没有 Motion，我们直接维持 PlayerData 里的现有位置即可。
-            // 只要不触发 BattleManager 里的 EnterScene 或 MoveTo，玩家就会停在原地。
-            if (Player.Data.Pos != null) 
+            // 获取配置
+            if (Data.GameData.BoxingClubChallengeData.TryGetValue((int)this.ChallengeId, out var config))
             {
-                Player.Data.Pos = Player.Data.Pos; // 显式维持引用
-            }
+                // 【关键修正】：强制使用第一轮的 GroupID (索引 0)，保持组 ID 一致
+                uint persistentGroupId = (uint)config.StageGroupList[0];
+                this.CurrentStageGroupId = persistentGroupId;
 
-            // 4. 发送更新包 (4244) - 触发选 Buff UI
-            await Player.SendPacket(new PacketBoxingClubChallengeUpdateScNotify(snapshot));
+                if (Data.GameData.BoxingClubStageGroupData.TryGetValue((int)persistentGroupId, out var groupConfig))
+                {
+                    var eventPool = groupConfig.DisplayEventIDList;
+                    if (eventPool != null && eventPool.Count > 0)
+                    {
+                        // 2. 依然根据轮次索引切换实际战斗的怪物 ID
+                        int poolIndex = Math.Min(this.CurrentRoundIndex, eventPool.Count - 1);
+                        this.CurrentMatchEventId = (uint)eventPool[poolIndex];
 
-            // 5. 【核心修正】强制刷新场景实体
-            // 这一步能让客户端清理掉刚刚战斗产生的怪物残留，并重新渲染角色
-            if (Player.SceneInstance != null)
-            {
-                await Player.SceneInstance.SyncLineup();
+                        // 3. 构造快照
+                        var snapshot = Player.BoxingClubManager.ConstructSnapshot(this);
+                        
+                        // 强制覆盖：组 ID 不变，进度增加
+                        snapshot.HJMGLEMJHKG = persistentGroupId; 
+                        snapshot.HNPEAPPMGAA = (uint)this.CurrentRoundIndex;
+                        
+                        // 注入完整的池子（确保动画有弹药）
+                        snapshot.HLIBIJFHHPG.Clear();
+                        snapshot.HLIBIJFHHPG.AddRange(eventPool.Select(x => (uint)x));
+
+                        _log.Info($"[Boxing-Fix] 组ID锁死:{snapshot.HJMGLEMJHKG} | 进度:{snapshot.HNPEAPPMGAA} | 下场怪:{this.CurrentMatchEventId}");
+
+                        await Player.SendPacket(new PacketBoxingClubChallengeUpdateScNotify(snapshot));
+                    }
+                }
             }
+            await Player.SceneInstance!.SyncLineup();
         }
     }
+
     else
     {
-        // 失败逻辑...
+        // 失败逻辑保持不变
         await Player.LineupManager!.SetExtraLineup(ExtraLineupType.LineupNone);
         if (Player.BoxingClubManager != null) Player.BoxingClubManager.ChallengeInstance = null;
     }
