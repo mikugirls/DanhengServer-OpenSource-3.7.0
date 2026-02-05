@@ -81,9 +81,9 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
                 // 显式转换为 int 以匹配 GetTrialAvatar 的参数要求
 				Player.AvatarManager!.GetTrialAvatar((int)trialId);
                 // 2. 直接 Add 到当前关卡的 avatar_list 字段中
-                if (!info.AvatarList.Contains((uint)trialId))
+                if (!info.AvatarList.Contains((int)trialId))
                 {
-                    info.AvatarList.Add((uint)trialId);
+                    info.AvatarList.Add((int)trialId);
                 }
             }
         }
