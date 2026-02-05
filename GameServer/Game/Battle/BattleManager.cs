@@ -214,7 +214,7 @@ public class BattleManager(PlayerInstance player) : BasePlayerManager(player)
             .OfType<AvatarSceneInfo>().ToList();
 
         battleInstance.AvatarInfo = avatarList;
-
+		Player.BoxingClubManager?.ChallengeInstance?.OnBattleStart(battleInstance);
         // call battle start
         Player.RogueManager!.GetRogueInstance()?.OnBattleStart(battleInstance);
         Player.ChallengeManager!.ChallengeInstance?.OnBattleStart(battleInstance);
@@ -424,8 +424,8 @@ public class BattleManager(PlayerInstance player) : BasePlayerManager(player)
     }
 
     // --- 3. 处理传送逻辑 ---
-    if (teleportToAnchor)
-    {
+    if (teleportToAnchor && Player.BoxingClubManager?.ChallengeInstance == null)
+    {	Console.WriteLine($"[Battle] 开始传送");
         var anchorProp = Player.SceneInstance?.GetNearestSpring(long.MaxValue);
         if (anchorProp != null)
         {
@@ -453,6 +453,14 @@ public class BattleManager(PlayerInstance player) : BasePlayerManager(player)
 	}
     // 最后才销毁实例
     Player.BattleInstance = null;
+	// 3. 【重要】拦截大世界刷新
+    // 如果是超级联赛，禁止执行默认的场景通知
+    if (Player.BoxingClubManager?.ChallengeInstance != null) {
+        Console.WriteLine("[Battle] 超级联赛进行中，跳过大世界场景刷新逻辑。");
+        return; 
+    }
+
+    // 只有非活动战斗才跑下面这些
     Console.WriteLine($"[Battle] <<< 战斗流程彻底结束");
 }
 }

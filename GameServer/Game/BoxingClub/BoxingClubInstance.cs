@@ -6,7 +6,9 @@ using EggLink.DanhengServer.GameServer.Game.Player;
 using EggLink.DanhengServer.GameServer.Server.Packet.Send.Lineup; // 必须引用以发送同步包
 using EggLink.DanhengServer.Proto;
 using EggLink.DanhengServer.Util;
-
+using EggLink.DanhengServer.GameServer.Game.Scene.Entity;
+using EggLink.DanhengServer.GameServer.Server.Packet.Send.BoxingClub;
+using EggLink.DanhengServer.GameServer.Game.Scene;
 namespace EggLink.DanhengServer.GameServer.Game.BoxingClub;
 
 public class BoxingClubInstance(PlayerInstance player, uint challengeId, List<uint> avatars)
@@ -106,25 +108,53 @@ public class BoxingClubInstance(PlayerInstance player, uint challengeId, List<ui
     /// <summary>
     /// 结算拦截：判断胜负并决定是否重置阵容
     /// </summary>
-    public async ValueTask OnBattleEnd(PVEBattleResultCsReq req)
+   public async ValueTask OnBattleEnd(PVEBattleResultCsReq req)
+{
+    if (req.EndStatus == BattleEndStatus.BattleEndWin)
     {
-        if (req.EndStatus == BattleEndStatus.BattleEndWin)
+        // 1. 逻辑推进
+        CurrentMatchEventId = 0;
+        CurrentOpponentIndex = 0;
+        CurrentRoundIndex++; 
+
+        _log.Info($"[Boxing] 战斗胜利，轮次推进至 {CurrentRoundIndex}。");
+
+        if (Player.BoxingClubManager != null)
         {
-            // 胜利：清空匹配状态，保留实例进入下一轮选 Buff
-            CurrentMatchEventId = 0;
-            CurrentOpponentIndex = 0;
-            _log.Info($"[Boxing] 战斗胜利，轮次 {CurrentRoundIndex} 结束。");
-        }
-        else
-        {
-            // 失败或退出：强制切回大世界阵容 (None)，并销毁本局实例
-            _log.Info($"[Boxing] 战斗中止/失败，正在重置阵容并销毁实例。");
-            await Player.LineupManager!.SetExtraLineup(ExtraLineupType.LineupNone);
+            // 2. 构造快照
+            var snapshot = Player.BoxingClubManager.ConstructSnapshot(this);
             
-            if (Player.BoxingClubManager != null) 
+            // 3. 【核心修正】安全的位置维持
+            // 既然 BaseGameEntity 没有 Motion，我们直接维持 PlayerData 里的现有位置即可。
+            // 只要不触发 BattleManager 里的 EnterScene 或 MoveTo，玩家就会停在原地。
+            if (Player.Data.Pos != null) 
             {
-                Player.BoxingClubManager.ChallengeInstance = null;
+                Player.Data.Pos = Player.Data.Pos; // 显式维持引用
+            }
+
+            // 4. 发送更新包 (4244) - 触发选 Buff UI
+            await Player.SendPacket(new PacketBoxingClubChallengeUpdateScNotify(snapshot));
+
+            // 5. 【核心修正】强制刷新场景实体
+            // 这一步能让客户端清理掉刚刚战斗产生的怪物残留，并重新渲染角色
+            if (Player.SceneInstance != null)
+            {
+                await Player.SceneInstance.SyncLineup();
             }
         }
     }
+    else
+    {
+        // 失败逻辑...
+        await Player.LineupManager!.SetExtraLineup(ExtraLineupType.LineupNone);
+        if (Player.BoxingClubManager != null) Player.BoxingClubManager.ChallengeInstance = null;
+    }
+}
+	public void OnBattleStart(BattleInstance battle)
+	{
+    // 关键：在这里挂钩 OnBattleEnd 方法
+    // 这样当战斗结束时，会跑你那个“胜利则发送 4244 更新包”的逻辑，而不是直接回大世界
+    battle.OnBattleEnd += async (inst, res) => await this.OnBattleEnd(res);
+    _log.Info($"[Boxing] 战斗实例 {battle.BattleId} 已被超级联赛逻辑接管。");
+	}
 }
