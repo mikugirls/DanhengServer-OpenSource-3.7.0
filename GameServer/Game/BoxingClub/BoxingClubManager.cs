@@ -71,7 +71,19 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
                     NAALCBMBPGC = 0,
                 };
             }
-
+			// --- 【多添加的代码：学习故事模式角色注入】 ---
+            // 每一个挑战 ID 都要在 LineupManager 对应的 ExtraLineup 中注入试用角色
+            // 即使 info.AvatarList 只是快照，这行代码能保证服务器生成了真正的试用角色数据
+            if (config.SpecialAvatarIDList != null && config.SpecialAvatarIDList.Count > 0)
+            {
+                // 像故事模式一样，为当前循环到的 ChallengeID 提前准备好试用角色实例
+                // 这样客户端在选人界面请求这些 ID 时，服务器才会有数据返回
+                Player.LineupManager!.SetExtraLineup(ExtraLineupType.LineupBoxingClub, config.SpecialAvatarIDList);
+                
+                // 将配置里的 ID 填入快照列表，供客户端渲染选人栏
+                info.AvatarList.AddRange(config.SpecialAvatarIDList.Select(id => (uint)id));
+            }
+            // ------------------------------------------
           
 
             // 【核心修正】确保列表同步时也包含队伍，防止进入战斗前阵容在 UI 消失
