@@ -134,12 +134,14 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
         else
         {
             // [数据库整合]：如果请求没传阵容，尝试从数据库获取该关卡的记忆阵容 (Tag 3)
+            // 修复 CS0165: 显式初始化 dbInfo
+            Database.BoxingClub.BoxingClubInfo? dbInfo = null;
 			var dbChallenges = Player.BoxingClubData?.Challenges;
-            if (dbChallenges != null && dbChallenges.TryGetValue((int)req.ChallengeId, out var dbInfo))
+            if (dbChallenges != null && dbChallenges.TryGetValue((int)req.ChallengeId, out dbInfo))
 			{
 				// 如果找到了数据库记录，执行相关逻辑
 				_log.Info($"[Match] 从数据库恢复记忆阵容: ChallengeId {req.ChallengeId}");
-				if (dbInfo.Lineup != null) 
+				if (dbInfo?.Lineup != null) 
 				{
 					safeAvatarList.AddRange(dbInfo.Lineup.Select(a => (uint)a.BaseAvatarId));
 				}
@@ -187,7 +189,8 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
 public FCIHIJLOMGA ConstructSnapshot(BoxingClubInstance inst)
 {
     // [数据库整合]：获取持久化的历史数据
-    Player.BoxingClubData?.Challenges.TryGetValue((int)inst.ChallengeId, out var dbInfo);
+    Database.BoxingClub.BoxingClubInfo? dbInfo = null;
+    Player.BoxingClubData?.Challenges.TryGetValue((int)inst.ChallengeId, out dbInfo);
 
     var snapshot = new FCIHIJLOMGA 
     {
@@ -276,7 +279,9 @@ public FCIHIJLOMGA ConstructSnapshot(BoxingClubInstance inst)
         if (isFullReset) ChallengeInstance = null;
         
         // 增加数据库读取以保持 UI 状态
-        Player.BoxingClubData?.Challenges.TryGetValue((int)challengeId, out var dbInfo);
+        // 修复 CS0165: 显式初始化 dbInfo
+        Database.BoxingClub.BoxingClubInfo? dbInfo = null;
+        Player.BoxingClubData?.Challenges.TryGetValue((int)challengeId, out dbInfo);
         
         return new FCIHIJLOMGA 
         { 
