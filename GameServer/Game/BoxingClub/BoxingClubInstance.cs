@@ -195,43 +195,69 @@ public class BoxingClubInstance(PlayerInstance player, uint challengeId, List<ui
     /// <summary>
     /// 封装方法 2：挑战完美达成结算
     /// </summary>
+    /// <summary>
+    /// 封装：通关结算 (发奖、归零进度、标记完成、释放阵容)
+    /// </summary>
     private async ValueTask FinishChallenge()
     {
-        _log.Info($"[Boxing] 挑战 {this.ChallengeId} 全部通关，执行结算流程。");
+        _log.Info($"[Boxing] 最终通关结算开始: ChallengeId {this.ChallengeId}, 总回合: {this.TotalUsedTurns}");
 
         if (Data.GameData.BoxingClubChallengeData.TryGetValue((int)this.ChallengeId, out var config))
         {
-            // 1. 发放奖励 (调用 InventoryManager 封装的方法)
-            var resItems = await Player.InventoryManager.HandleReward(config.FirstPassRewardID, notify: false, sync: true);
+            // 1. 发放奖励逻辑 (调用你的 InventoryManager.HandleReward)
+            // 增加对 InventoryManager 的空检查以修复编译警告
+            if (Player.InventoryManager != null)
+            {
+                // 获取首通奖励并入库 (notify: false 避免弹出通用的小黑框提示)
+                var resItems = await Player.InventoryManager.HandleReward(config.FirstPassRewardID, notify: false, sync: true);
 
-            // 2. 发送大图展示通知 (4224)
-            var rewardNotify = new BoxingClubRewardScNotify {
-                ChallengeId = this.ChallengeId,
-                IsWin = true,
-                NAALCBMBPGC = 0,
-                Reward = new ItemList()
-            };
-            foreach (var item in resItems) {
-                rewardNotify.Reward.ItemList_.Add(new Item { ItemId = (uint)item.ItemId, ItemNum = (uint)item.Count });
+                // 2. 构造通关大图通知 (4224 - BoxingClubRewardScNotify)
+                var rewardNotify = new BoxingClubRewardScNotify 
+                {
+                    ChallengeId = this.ChallengeId,
+                    IsWin = true,
+                    NAALCBMBPGC = this.TotalUsedTurns, // 将总回合数作为评价数据发送
+                    Reward = new ItemList()
+                };
+
+                // 将奖励物品填充进大图展示列表
+                foreach (var item in resItems) 
+                {
+                    // [修正] 根据 Item.proto，字段名应为 Num
+                    rewardNotify.Reward.ItemList_.Add(new Item 
+                    { 
+                        ItemId = (uint)item.ItemId, 
+                        Num = (uint)item.Count 
+                    });
+                }
+                
+                // 发送大图通知
+                await Player.SendPacket(new PacketBoxingClubRewardScNotify(rewardNotify));
             }
-            await Player.SendPacket(new PacketBoxingClubRewardScNotify(rewardNotify));
 
-            // 3. 发送状态更新：进度归零且标记通关 (4244)
-            await Player.SendPacket(new PacketBoxingClubChallengeUpdateScNotify(new FCIHIJLOMGA {
+            // 3. 状态同步：进度归零、点亮主界面大勾勾 (4244)
+            await Player.SendPacket(new PacketBoxingClubChallengeUpdateScNotify(new FCIHIJLOMGA 
+            {
                 ChallengeId = this.ChallengeId,
-                HNPEAPPMGAA = 0,    // 进度归零
-                APLKNJEGBKF = true, // 标记通关
-                LLFOFPNDAFG = 1     // 赛季ID
+                HNPEAPPMGAA = 0,    // 进度重置为 0
+                APLKNJEGBKF = true, // 标记挑战已完成
+                LLFOFPNDAFG = 1,    // 赛季 ID (Tag 8)
+                NAALCBMBPGC = this.TotalUsedTurns // 同步实时累计回合 (Tag 9)
             }));
         }
 
-        // 4. 清理工作：释放阵容锁定并销毁实例
-        await Player.LineupManager!.SetExtraLineup(ExtraLineupType.LineupNone);
+        // 4. 清理工作：释放 Slot 19 编队锁定并销毁实例
+        if (Player.LineupManager != null)
+        {
+            await Player.LineupManager.SetExtraLineup(ExtraLineupType.LineupNone);
+        }
         
         if (Player.BoxingClubManager != null) 
+        {
             Player.BoxingClubManager.ChallengeInstance = null;
+        }
 
-        _log.Info($"[Boxing] 挑战完成，阵容已释放，实例已置空。");
+        _log.Info($"[Boxing] 挑战 {this.ChallengeId} 已销毁，玩家阵容已恢复正常。");
     }
  
    	
