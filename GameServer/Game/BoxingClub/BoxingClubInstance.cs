@@ -118,16 +118,23 @@ public class BoxingClubInstance(PlayerInstance player, uint challengeId, List<ui
     /// 核心结算拦截：处理战斗结束后的逻辑分支
     /// </summary>
     public async ValueTask OnBattleEnd(PVEBattleResultCsReq req)
+{
+    // 判定：只有胜利才进行回合累加
+    if (req.EndStatus == BattleEndStatus.BattleEndWin)
     {
-        if (req.EndStatus == BattleEndStatus.BattleEndWin)
+        // 从战斗统计数据中提取本场回合数并累加
+        if (req.Stt != null)
         {
-            await HandleBattleWin();
+            this.TotalUsedTurns += req.Stt.TotalBattleTurns;
         }
-        else
-        {
-            await HandleBattleLoss();
-        }
+
+        await HandleBattleWin();
     }
+    else
+    {
+        await HandleBattleLoss();
+    }
+}
 
     /// <summary>
     /// 封装：处理胜利逻辑
@@ -185,7 +192,8 @@ public class BoxingClubInstance(PlayerInstance player, uint challengeId, List<ui
                     var snapshot = Player.BoxingClubManager!.ConstructSnapshot(this);
                     snapshot.HJMGLEMJHKG = persistentGroupId; 
                     snapshot.HNPEAPPMGAA = (uint)this.CurrentRoundIndex;
-                    
+                    // 关键：同步当前已累积的回合数给 Tag 9
+					snapshot.NAALCBMBPGC = this.TotalUsedTurns;
                     snapshot.HLIBIJFHHPG.Clear();
                     snapshot.HLIBIJFHHPG.AddRange(eventPool.Select(x => (uint)x));
 
@@ -204,67 +212,68 @@ public class BoxingClubInstance(PlayerInstance player, uint challengeId, List<ui
     /// <summary>
     /// 封装：通关结算 (发奖、归零进度、标记完成、释放阵容)
     /// </summary>
-    private async ValueTask FinishChallenge()
+  	private async ValueTask FinishChallenge()
+{
+    _log.Info($"[Boxing] 最终通关！ChallengeId: {this.ChallengeId}, 总回合: {this.TotalUsedTurns}");
+
+    if (Data.GameData.BoxingClubChallengeData.TryGetValue((int)this.ChallengeId, out var config))
     {
-        _log.Info($"[Boxing] 最终通关结算开始: ChallengeId {this.ChallengeId}, 总回合: {this.TotalUsedTurns}");
-
-        if (Data.GameData.BoxingClubChallengeData.TryGetValue((int)this.ChallengeId, out var config))
+        // --- 数据库持久化开始 ---
+        var db = Player.BoxingClubData;
+        if (db != null)
         {
-            // 1. 发放奖励逻辑 (调用你的 InventoryManager.HandleReward)
-            // 增加对 InventoryManager 的空检查以修复编译警告
-            if (Player.InventoryManager != null)
+            // 获取或创建持久化条目
+            if (!db.Challenges.TryGetValue((int)this.ChallengeId, out var info))
             {
-                // 获取首通奖励并入库 (notify: false 避免弹出通用的小黑框提示)
-                var resItems = await Player.InventoryManager.HandleReward(config.FirstPassRewardID, notify: false, sync: true);
-
-                // 2. 构造通关大图通知 (4224 - BoxingClubRewardScNotify)
-                var rewardNotify = new BoxingClubRewardScNotify 
-                {
-                    ChallengeId = this.ChallengeId,
-                    IsWin = true,
-                    NAALCBMBPGC = this.TotalUsedTurns, // 将总回合数作为评价数据发送
-                    Reward = new ItemList()
-                };
-
-                // 将奖励物品填充进大图展示列表
-                foreach (var item in resItems) 
-                {
-                    // [修正] 根据 Item.proto，字段名应为 Num
-                    rewardNotify.Reward.ItemList_.Add(new Item 
-                    { 
-                        ItemId = (uint)item.ItemId, 
-                        Num = (uint)item.Count 
-                    });
-                }
-                
-                // 发送大图通知
-                await Player.SendPacket(new PacketBoxingClubRewardScNotify(rewardNotify));
+                info = new EggLink.DanhengServer.Database.BoxingClub.BoxingClubInfo { ChallengeId = (int)this.ChallengeId };
+                db.Challenges[(int)this.ChallengeId] = info;
             }
 
-            // 3. 状态同步：进度归零、点亮主界面大勾勾 (4244)
-            await Player.SendPacket(new PacketBoxingClubChallengeUpdateScNotify(new FCIHIJLOMGA 
+            // 1. 标记已通关 (Tag 10)
+            info.IsFinished = true;
+
+            // 2. 历史最快纪录更新 (Tag 13 - 比小逻辑)
+            int currentTotal = (int)this.TotalUsedTurns;
+            if (info.MinRounds <= 0 || currentTotal < info.MinRounds)
             {
-                ChallengeId = this.ChallengeId,
-                HNPEAPPMGAA = 0,    // 进度重置为 0
-                APLKNJEGBKF = true, // 标记挑战已完成
-                LLFOFPNDAFG = 1,    // 赛季 ID (Tag 8)
-                NAALCBMBPGC = this.TotalUsedTurns // 同步实时累计回合 (Tag 9)
-            }));
+                info.MinRounds = currentTotal;
+            }
+
+            // 3. 记忆本次通关阵容 (Tag 3)
+            var curLineup = Player.LineupManager?.GetCurLineup();
+            if (curLineup != null)
+            {
+                info.Lineup = curLineup.BaseAvatars.ToList();
+            }
+
+            // 4. 物理存盘
+            Database.DatabaseHelper.UpdateInstance(db);
+        }
+        // --- 数据库持久化结束 ---
+
+        // 发奖逻辑...
+        if (Player.InventoryManager != null)
+        {
+            var resItems = await Player.InventoryManager.HandleReward(config.FirstPassRewardID, notify: false, sync: true);
+            // 发送大图结算协议 (4224)...
         }
 
-        // 4. 清理工作：释放 Slot 19 编队锁定并销毁实例
-        if (Player.LineupManager != null)
+        // 最终状态同步协议 (4244)
+        await Player.SendPacket(new PacketBoxingClubChallengeUpdateScNotify(new FCIHIJLOMGA 
         {
-            await Player.LineupManager.SetExtraLineup(ExtraLineupType.LineupNone);
-        }
-        
-        if (Player.BoxingClubManager != null) 
-        {
-            Player.BoxingClubManager.ChallengeInstance = null;
-        }
-
-        _log.Info($"[Boxing] 挑战 {this.ChallengeId} 已销毁，玩家阵容已恢复正常。");
+            ChallengeId = this.ChallengeId,
+            HNPEAPPMGAA = 0,    // 进度归零
+            APLKNJEGBKF = true, // 大勾点亮
+            LLFOFPNDAFG = 1,
+            NAALCBMBPGC = this.TotalUsedTurns, // 本次成绩
+            CPGOIPICPJF = (uint)(Player.BoxingClubData?.Challenges[(int)this.ChallengeId].MinRounds ?? 0) // 数据库中的历史最佳
+        }));
     }
+
+    // 清理 Slot 19 和 销毁实例...
+    await Player.LineupManager!.SetExtraLineup(ExtraLineupType.LineupNone);
+    Player.BoxingClubManager!.ChallengeInstance = null;
+}
  
    	
 	public void OnBattleStart(BattleInstance battle)
