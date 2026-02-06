@@ -58,6 +58,8 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
      * UI 翻页的核心开关。后端从 0 开始计数（界面显示 1/4）。
      * 打完第 1 轮后发 1（显示 2/4），以此类推。
      * 只有此值发生递增位移，客户端才会启动转盘动画并滚动至下一位对手。
+	 *  Tag 13 (CPGOIPICPJF)  : 历史最快回合数 (MinRounds)。
+	 *  Tag 9  (NAALCBMBPGC)  : 当前挑战实时累计回合数 (TotalUsedTurns)决定评价。
      */
     public List<FCIHIJLOMGA> GetChallengeList()
     {
