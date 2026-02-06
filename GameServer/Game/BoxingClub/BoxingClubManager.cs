@@ -112,56 +112,54 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
 
  public FCIHIJLOMGA ProcessMatchRequest(MatchBoxingClubOpponentCsReq req)
 {
-    // 1. 如果是第一轮初始化
-    if (ChallengeInstance == null)
+    // 【核心修正】直接解析请求包里的 ChallengeId
+    uint reqId = req.ChallengeId; 
+
+    // 1. 全局同步点：如果实例不存在，或者请求的 ID 与当前实例记录的 ID 不一致
+    // 必须重新创建实例，这样 Manager 下的所有其他方法才能拿到正确的 ChallengeInstance
+    if (ChallengeInstance == null || ChallengeInstance.ChallengeId != reqId)
     {
-        var safeAvatarList = new List<uint>();
+        _log.Info($"[Match] 检测到 ID 不匹配或新挑战，全局同步 ChallengeId 为: {reqId}");
         
-        // 优先使用请求中的阵容
-        if (req.MDLACHDKMPH != null && req.MDLACHDKMPH.Count > 0)
+        var safeAvatarList = new List<uint>();
+        if (req.MDLACHDKMPH is { Count: > 0 })
         {
             safeAvatarList.AddRange(req.MDLACHDKMPH.Select(a => a.AvatarId));
         }
         else
         {
-            // [数据库整合]：如果请求没传阵容，尝试从数据库获取该关卡的记忆阵容 (Tag 3)
-            // 修复 CS0165: 显式初始化 dbInfo
-            Database.BoxingClub.BoxingClubInfo? dbInfo = null;
-			var dbChallenges = Player.BoxingClubData?.Challenges;
-            if (dbChallenges != null && dbChallenges.TryGetValue((int)req.ChallengeId, out dbInfo))
-			{
-				// 如果找到了数据库记录，执行相关逻辑
-				_log.Info($"[Match] 从数据库恢复记忆阵容: ChallengeId {req.ChallengeId}");
-				if (dbInfo?.Lineup != null) 
-				{
-					safeAvatarList.AddRange(dbInfo.Lineup.Select(a => (uint)a.BaseAvatarId));
-				}
-			}
+            // 数据库补全逻辑...
+            if (Player.BoxingClubData?.Challenges.TryGetValue((int)reqId, out var dbInfo) == true)
+            {
+                if (dbInfo?.Lineup != null) 
+                    safeAvatarList.AddRange(dbInfo.Lineup.Select(a => (uint)a.BaseAvatarId));
+            }
         }
-        
-        ChallengeInstance = new BoxingClubInstance(Player, req.ChallengeId, safeAvatarList);
+
+        // --- 这一步最关键：更新了成员变量，后续所有方法调用的 ID 都会变 ---
+        ChallengeInstance = new BoxingClubInstance(Player, reqId, safeAvatarList);
     }
     else 
     {
-        // 2. 后续轮次更新阵容
-        if (req.MDLACHDKMPH != null && req.MDLACHDKMPH.Count > 0)
+        // 如果 ID 没变，同步阵容
+        if (req.MDLACHDKMPH is { Count: > 0 })
         {
             ChallengeInstance.SelectedAvatars.Clear();
             ChallengeInstance.SelectedAvatars.AddRange(req.MDLACHDKMPH.Select(a => a.AvatarId));
         }
     }
 
-    // 3. 执行核心匹配计算
+    // 2. 匹配逻辑：直接基于已经同步完成的 ChallengeInstance
     uint currentGroupId = 0;
     uint targetEventId = 0;
 
     if (GameData.BoxingClubChallengeData.TryGetValue((int)ChallengeInstance.ChallengeId, out var config))
     {
+        // 使用同步后的 ID 查表
         int roundIdx = ChallengeInstance.CurrentRoundIndex; 
         if (config.StageGroupList != null && roundIdx < config.StageGroupList.Count)
         {
             currentGroupId = (uint)config.StageGroupList[roundIdx]; 
-            
             if (GameData.BoxingClubStageGroupData.TryGetValue((int)currentGroupId, out var groupConfig))
             {
                 targetEventId = (uint)(groupConfig.DisplayEventIDList?.FirstOrDefault() ?? 0);
@@ -169,11 +167,11 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
         }
     }
 
+    // 3. 将计算结果回填至 Instance
+    // 这样稍后 EnterBoxingClubStage 调用时，拿到的才是这次匹配出来的怪
     ChallengeInstance.CurrentStageGroupId = currentGroupId;
     ChallengeInstance.CurrentMatchEventId = targetEventId;
 
-    _log.Info($"[Match-Check] 轮次: {ChallengeInstance.CurrentRoundIndex}, 分组: {currentGroupId}, 对手: {targetEventId}");
-    
     return ConstructSnapshot(ChallengeInstance);
 }
 

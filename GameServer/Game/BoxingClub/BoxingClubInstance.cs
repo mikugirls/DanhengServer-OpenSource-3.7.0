@@ -44,7 +44,7 @@ public class BoxingClubInstance(PlayerInstance player, uint challengeId, List<ui
             return;
         }
 		// 1. 使用模式匹配直接尝试获取配置并判定非空
-		if (!Data.GameData.BoxingClubStageData.TryGetValue((int)this.CurrentMatchEventId, out var stageBuffConfig) && stageBuffConfig is not null)
+		if (Data.GameData.BoxingClubStageData.TryGetValue((int)this.CurrentMatchEventId, out var stageBuffConfig) && stageBuffConfig is not null)
 		{
 		// 此时编译器完全确定 stageBuffConfig 不为 null
 		if (stageBuffConfig.BuffID != 0 && !SelectedBuffs.Contains((uint)stageBuffConfig.BuffID))
