@@ -67,7 +67,7 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
         if (EnableLog) _log.Debug($"[Sync] 正在加载玩家 {Player.Uid} 的数据库持久化搏击记录...");
 
         // 获取数据库对象中的挑战字典
-        var dbChallenges = Player.BoxingClubData.Challenges;
+        var dbChallenges = Player.BoxingClubData?.Challenges ?? new();
 
         foreach (var config in GameData.BoxingClubChallengeData.Values)
         {
@@ -134,12 +134,13 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
         else
         {
             // [数据库整合]：如果请求没传阵容，尝试从数据库获取该关卡的记忆阵容 (Tag 3)
-            if (Player.BoxingClubData.Challenges.TryGetValue((int)req.ChallengeId, out var dbInfo) 
-                && dbInfo.Lineup.Count > 0)
-            {
-                _log.Info($"[Match] 从数据库恢复记忆阵容: ChallengeId {req.ChallengeId}");
-                safeAvatarList.AddRange(dbInfo.Lineup.Select(a => (uint)a.BaseAvatarId));
-            }
+			var dbChallenges = Player.BoxingClubData?.Challenges;
+            if (dbChallenges != null && dbChallenges.TryGetValue((int)req.ChallengeId, out var dbInfo))
+		{
+    // 如果找到了数据库记录，执行相关逻辑
+    _log.Info($"[Match] 从数据库恢复记忆阵容: ChallengeId {req.ChallengeId}");
+    safeAvatarList.AddRange(dbInfo.Lineup.Select(a => (uint)a.BaseAvatarId));
+		}
         }
         
         ChallengeInstance = new BoxingClubInstance(Player, req.ChallengeId, safeAvatarList);
@@ -183,7 +184,7 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
 public FCIHIJLOMGA ConstructSnapshot(BoxingClubInstance inst)
 {
     // [数据库整合]：获取持久化的历史数据
-    Player.BoxingClubData.Challenges.TryGetValue((int)inst.ChallengeId, out var dbInfo);
+    Player.BoxingClubData?.Challenges.TryGetValue((int)inst.ChallengeId, out var dbInfo);
 
     var snapshot = new FCIHIJLOMGA 
     {
