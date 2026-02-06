@@ -94,7 +94,7 @@ public class BoxingClubInstance(PlayerInstance player, uint challengeId, List<ui
         {
             WorldLevel = Player.Data.WorldLevel,
             EventId = (int)CurrentMatchEventId,
-			RoundLimit = 30, // 搏击俱乐部的默认轮次限制
+			RoundLimit = (uint)config.ChallengeTurnLimit,
             BoxingClubOptions = new BattleBoxingClubOptions(SelectedBuffs.ToList(), Player)
         };
 
