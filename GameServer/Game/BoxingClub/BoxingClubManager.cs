@@ -61,63 +61,54 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
 	 * Tag 13 (CPGOIPICPJF)  : 历史最快回合数 (MinRounds)。
 	 * Tag 9  (NAALCBMBPGC)  : 当前挑战实时累计回合数 (TotalUsedTurns)决定评价。
      */
-   public List<FCIHIJLOMGA> GetChallengeList()
+  public List<FCIHIJLOMGA> GetChallengeList()
+{
+    var challengeInfos = new List<FCIHIJLOMGA>();
+    var dbChallenges = Player.BoxingClubData?.Challenges ?? new Dictionary<int, Database.BoxingClub.BoxingClubInfo>();
+
+    foreach (var config in GameData.BoxingClubChallengeData.Values)
     {
-        var challengeInfos = new List<FCIHIJLOMGA>();
-        if (EnableLog) _log.Debug($"[Sync] 正在加载玩家 {Player.Uid} 的数据库持久化搏击记录...");
+        uint cid = (uint)config.ChallengeID;
+        FCIHIJLOMGA info;
 
-        // 获取数据库对象中的挑战字典 (增加安全空检查)
-        var dbChallenges = Player.BoxingClubData?.Challenges ?? new Dictionary<int, Database.BoxingClub.BoxingClubInfo>();
-
-        foreach (var config in GameData.BoxingClubChallengeData.Values)
+        // 情况 A：玩家正在挑战中，由 ConstructSnapshot 处理实时 Tag
+        if (ChallengeInstance != null && ChallengeInstance.ChallengeId == cid)
         {
-            uint cid = (uint)config.ChallengeID;
-            FCIHIJLOMGA info;
-
-            // 优先检查：如果玩家正在打这一关，直接构造内存快照
-            if (ChallengeInstance != null && ChallengeInstance.ChallengeId == cid)
-            {
-                info = ConstructSnapshot(ChallengeInstance);
-            }
-            else
-            {
-                // 否则从数据库加载持久化数据
-                dbChallenges.TryGetValue((int)cid, out var dbInfo);
-
-                info = new FCIHIJLOMGA
-                {
-                    ChallengeId = cid,
-                    LLFOFPNDAFG = 1,                 // 赛季 ID
-                    APLKNJEGBKF = dbInfo?.IsFinished ?? false,      // Tag 10: 完结勾勾 (数据库存)
-                    CPGOIPICPJF = (uint)(dbInfo?.MinRounds ?? 0),   // Tag 13: 历史最快回合 (数据库存)
-                    NAALCBMBPGC = 0,                                // Tag 9: 实时回合 (非挑战中设为0)
-                    HNPEAPPMGAA = 0                                 // Tag 14: 进度 (非挑战中设为0)
-                };
-
-                // 注入记忆阵容 (Tag 3)
-                if (dbInfo?.Lineup != null && dbInfo.Lineup.Count > 0)
-                {
-                    // 将数据库里的 LineupAvatarInfo 列表转为 UI 显示用的 uint ID 列表
-                    info.AvatarList.AddRange(dbInfo.Lineup.Select(x => (uint)x.BaseAvatarId));
-                }
-                else
-                {
-                    // 如果数据库里没存阵容，则注入配置表里的默认试用角色
-                    if (config.SpecialAvatarIDList != null)
-                    {
-                        foreach (var trialId in config.SpecialAvatarIDList)
-                        {
-                            Player.AvatarManager?.GetTrialAvatar((int)trialId);
-                            info.AvatarList.Add((uint)trialId);
-                        }
-                    }
-                }
-            }
-
-            challengeInfos.Add(info);
+            info = ConstructSnapshot(ChallengeInstance);
         }
-        return challengeInfos;
+        else
+        {
+            // 情况 B：关卡静止态，仅同步历史数据
+            dbChallenges.TryGetValue((int)cid, out var dbInfo);
+
+            info = new FCIHIJLOMGA
+            {
+                ChallengeId = cid,
+                LLFOFPNDAFG = 1, // 赛季 ID
+                APLKNJEGBKF = dbInfo?.IsFinished ?? false, // 是否完结
+                CPGOIPICPJF = (uint)(dbInfo?.MinRounds ?? 0), // 历史战绩
+                // 【核心修正】不给 HNPEAPPMGAA (Tag 14), HJMGLEMJHKG (Tag 4), NAALCBMBPGC (Tag 9) 赋值
+                // 此时 Protobuf 不会序列化这些字段，客户端处于“待机”状态。
+            };
+
+            // 注入选人记忆列表 (Tag 3)
+            if (dbInfo?.Lineup != null && dbInfo.Lineup.Count > 0)
+            {
+                info.AvatarList.AddRange(dbInfo.Lineup.Select(x => (uint)x.BaseAvatarId));
+            }
+            else if (config.SpecialAvatarIDList != null)
+            {
+                foreach (var trialId in config.SpecialAvatarIDList)
+                {
+                    Player.AvatarManager?.GetTrialAvatar((int)trialId);
+                    info.AvatarList.Add((uint)trialId);
+                }
+            }
+        }
+        challengeInfos.Add(info);
     }
+    return challengeInfos;
+}
 
  public FCIHIJLOMGA ProcessMatchRequest(MatchBoxingClubOpponentCsReq req)
 {
