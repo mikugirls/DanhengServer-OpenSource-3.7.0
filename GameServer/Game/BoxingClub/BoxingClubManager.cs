@@ -61,56 +61,56 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
 	 *  Tag 13 (CPGOIPICPJF)  : 历史最快回合数 (MinRounds)。
 	 *  Tag 9  (NAALCBMBPGC)  : 当前挑战实时累计回合数 (TotalUsedTurns)决定评价。
      */
-    public List<FCIHIJLOMGA> GetChallengeList()
+   public List<FCIHIJLOMGA> GetChallengeList()
     {
         var challengeInfos = new List<FCIHIJLOMGA>();
-        if (EnableLog) _log.Debug($"[Sync] 正在同步玩家 {Player.Uid} 的搏击挑战列表...");
+        if (EnableLog) _log.Debug($"[Sync] 正在加载玩家 {Player.Uid} 的数据库持久化搏击记录...");
+
+        // 获取数据库对象中的挑战字典
+        var dbChallenges = Player.BoxingClubData.Challenges;
 
         foreach (var config in GameData.BoxingClubChallengeData.Values)
         {
+            uint cid = (uint)config.ChallengeID;
             FCIHIJLOMGA info;
-            if (ChallengeInstance != null && ChallengeInstance.ChallengeId == (uint)config.ChallengeID)
+
+            // 优先检查：如果玩家正在打这一关，直接构造内存快照
+            if (ChallengeInstance != null && ChallengeInstance.ChallengeId == cid)
             {
                 info = ConstructSnapshot(ChallengeInstance);
             }
             else
             {
-                info = new FCIHIJLOMGA 
-                { 
-                    ChallengeId = (uint)config.ChallengeID, 
-                    LLFOFPNDAFG = 1, 
-                    APLKNJEGBKF = false,
-                    CPGOIPICPJF = 0,
-                    NAALCBMBPGC = 0,
-                };
-            }
-			// --- 【修改处：直接注入试用 ID】 ---
-        	// 不再判断当前是什么 ID，直接把配置表里这一关的试用角色塞进 avatar_list
-        if (config.SpecialAvatarIDList != null)
-        {
-            foreach (var trialId in config.SpecialAvatarIDList)
-            {
-                // 1. 确保服务器为这些试用 ID 生成了内存数据（供后续详情请求使用）
-                // 显式转换为 int 以匹配 GetTrialAvatar 的参数要求
-				Player.AvatarManager!.GetTrialAvatar((int)trialId);
-                // 2. 直接 Add 到当前关卡的 avatar_list 字段中
-                if (!info.AvatarList.Contains((uint)trialId))
-                {
-                    info.AvatarList.Add((uint)trialId);
-                }
-            }
-        }
-            // ------------------------------------------
-          
+                // 否则从数据库加载持久化数据
+                dbChallenges.TryGetValue((int)cid, out var dbInfo);
 
-            // 【核心修正】确保列表同步时也包含队伍，防止进入战斗前阵容在 UI 消失
-            if (ChallengeInstance != null && ChallengeInstance.ChallengeId == (uint)config.ChallengeID)
-            {
-                if (ChallengeInstance.SelectedAvatars.Count > 0)
+                info = new FCIHIJLOMGA
                 {
-                    if (EnableLog) _log.Info($"[Sync] 快照队伍注入: {string.Join(",", ChallengeInstance.SelectedAvatars)}");
-                    info.AvatarList.Clear();
-                    info.AvatarList.AddRange(ChallengeInstance.SelectedAvatars);
+                    ChallengeId = cid,
+                    LLFOFPNDAFG = 1,                 // 赛季 ID
+                    APLKNJEGBKF = dbInfo?.IsFinished ?? false,      // Tag 10: 完结勾勾 (数据库存)
+                    CPGOIPICPJF = (uint)(dbInfo?.MinRounds ?? 0),   // Tag 13: 历史最快回合 (数据库存)
+                    NAALCBMBPGC = 0,                                // Tag 9: 实时回合 (非挑战中设为0)
+                    HNPEAPPMGAA = 0                                 // Tag 14: 进度 (非挑战中设为0)
+                };
+
+                // 注入记忆阵容 (Tag 3)
+                if (dbInfo?.Lineup != null && dbInfo.Lineup.Count > 0)
+                {
+                    // 将数据库里的 LineupAvatarInfo 列表转为 UI 显示用的 uint ID 列表
+                    info.AvatarList.AddRange(dbInfo.Lineup.Select(x => (uint)x.BaseAvatarId));
+                }
+                else
+                {
+                    // 如果数据库里没存阵容，则注入配置表里的默认试用角色
+                    if (config.SpecialAvatarIDList != null)
+                    {
+                        foreach (var trialId in config.SpecialAvatarIDList)
+                        {
+                            Player.AvatarManager!.GetTrialAvatar((int)trialId);
+                            info.AvatarList.Add((uint)trialId);
+                        }
+                    }
                 }
             }
 
