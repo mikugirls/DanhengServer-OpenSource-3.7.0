@@ -37,7 +37,12 @@ public class BoxingClubInstance(PlayerInstance player, uint challengeId, List<ui
             _log.Error("[Boxing] 进入失败：未匹配对手。");
             return;
         }
-
+		// --- 核心修正：获取挑战配置以读取 RoundLimit ---
+        if (!Data.GameData.BoxingClubChallengeData.TryGetValue((int)this.ChallengeId, out var config))
+        {
+            _log.Error($"[Boxing] 找不到挑战配置: {this.ChallengeId}");
+            return;
+        }
         int actualStageId = (int)(CurrentMatchEventId * 10) + Player.Data.WorldLevel;
         if (!Data.GameData.StageConfigData.TryGetValue(actualStageId, out var stageConfig)) 
         {
