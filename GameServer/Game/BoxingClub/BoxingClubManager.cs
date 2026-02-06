@@ -172,10 +172,10 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
     var snapshot = new FCIHIJLOMGA 
     {
         ChallengeId = inst.ChallengeId,
-        HJMGLEMJHKG = inst.CurrentStageGroupId, // 轮盘位置
+        HJMGLEMJHKG = inst.CurrentStageGroupId, // 选择哪一个组怪物
         LLFOFPNDAFG = 1, 
-		NAALCBMBPGC = 0, 	// 赛季ID
-        HNPEAPPMGAA = (uint)(inst.CurrentRoundIndex) // 轮次状态 (0)
+		NAALCBMBPGC = 0, 	// 总轮次
+        HNPEAPPMGAA = (uint)(inst.CurrentRoundIndex) // 进度 (0)
     };
 
     // 1. 同步简单的 ID 列表
