@@ -15,7 +15,6 @@ namespace EggLink.DanhengServer.Proto {
   public static partial class TakeCityShopRewardScRspReflection {
 
     #region Descriptor
-    /// <summary>File descriptor for TakeCityShopRewardScRsp.proto</summary>
     public static pbr::FileDescriptor Descriptor {
       get { return descriptor; }
     }
@@ -48,23 +47,19 @@ namespace EggLink.DanhengServer.Proto {
     private static readonly pb::MessageParser<TakeCityShopRewardScRsp> _parser = new pb::MessageParser<TakeCityShopRewardScRsp>(() => new TakeCityShopRewardScRsp());
     private pb::UnknownFieldSet _unknownFields;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pb::MessageParser<TakeCityShopRewardScRsp> Parser { get { return _parser; } }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
       get { return global::EggLink.DanhengServer.Proto.TakeCityShopRewardScRspReflection.Descriptor.MessageTypes[0]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     pbr::MessageDescriptor pb::IMessage.Descriptor {
       get { return Descriptor; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public TakeCityShopRewardScRsp() {
       OnConstruction();
     }
@@ -72,7 +67,6 @@ namespace EggLink.DanhengServer.Proto {
     partial void OnConstruction();
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public TakeCityShopRewardScRsp(TakeCityShopRewardScRsp other) : this() {
       level_ = other.level_;
       reward_ = other.reward_ != null ? other.reward_.Clone() : null;
@@ -82,7 +76,6 @@ namespace EggLink.DanhengServer.Proto {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public TakeCityShopRewardScRsp Clone() {
       return new TakeCityShopRewardScRsp(this);
     }
@@ -93,9 +86,7 @@ namespace EggLink.DanhengServer.Proto {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public uint Level {
       get { return level_; }
-      set {
-        level_ = value;
-      }
+      set { level_ = value; }
     }
 
     /// <summary>Field number for the "reward" field.</summary>
@@ -104,9 +95,7 @@ namespace EggLink.DanhengServer.Proto {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public global::EggLink.DanhengServer.Proto.ItemList Reward {
       get { return reward_; }
-      set {
-        reward_ = value;
-      }
+      set { reward_ = value; }
     }
 
     /// <summary>Field number for the "retcode" field.</summary>
@@ -115,9 +104,7 @@ namespace EggLink.DanhengServer.Proto {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public uint Retcode {
       get { return retcode_; }
-      set {
-        retcode_ = value;
-      }
+      set { retcode_ = value; }
     }
 
     /// <summary>Field number for the "shop_id" field.</summary>
@@ -126,9 +113,39 @@ namespace EggLink.DanhengServer.Proto {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public uint ShopId {
       get { return shopId_; }
-      set {
-        shopId_ = value;
-      }
+      set { shopId_ = value; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public override bool Equals(object other) {
+      return Equals(other as TakeCityShopRewardScRsp);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public bool Equals(TakeCityShopRewardScRsp other) {
+      if (ReferenceEquals(other, null)) return false;
+      if (ReferenceEquals(other, this)) return true;
+      if (Level != other.Level) return false;
+      if (!object.Equals(Reward, other.Reward)) return false;
+      if (Retcode != other.Retcode) return false;
+      if (ShopId != other.ShopId) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (Level != 0) hash ^= Level.GetHashCode();
+      if (reward_ != null) hash ^= Reward.GetHashCode();
+      if (Retcode != 0) hash ^= Retcode.GetHashCode();
+      if (ShopId != 0) hash ^= ShopId.GetHashCode();
+      if (_unknownFields != null) hash ^= _unknownFields.GetHashCode();
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -136,7 +153,6 @@ namespace EggLink.DanhengServer.Proto {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       output.WriteRawMessage(this);
     #else
-      // 3.7.0 Tags: Level=3(24), Reward=10(82), Retcode=12(96), ShopId=15(120)
       if (Level != 0) {
         output.WriteRawTag(24);
         output.WriteUInt32(Level);
@@ -187,44 +203,24 @@ namespace EggLink.DanhengServer.Proto {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public int CalculateSize() {
       int size = 0;
-      if (Level != 0) {
-        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(Level);
-      }
-      if (reward_ != null) {
-        size += 1 + pb::CodedOutputStream.ComputeMessageSize(Reward);
-      }
-      if (Retcode != 0) {
-        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(Retcode);
-      }
-      if (ShopId != 0) {
-        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(ShopId);
-      }
-      if (_unknownFields != null) {
-        size += _unknownFields.CalculateSize();
-      }
+      if (Level != 0) size += 1 + pb::CodedOutputStream.ComputeUInt32Size(Level);
+      if (reward_ != null) size += 1 + pb::CodedOutputStream.ComputeMessageSize(Reward);
+      if (Retcode != 0) size += 1 + pb::CodedOutputStream.ComputeUInt32Size(Retcode);
+      if (ShopId != 0) size += 1 + pb::CodedOutputStream.ComputeUInt32Size(ShopId);
+      if (_unknownFields != null) size += _unknownFields.CalculateSize();
       return size;
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void MergeFrom(TakeCityShopRewardScRsp other) {
-      if (other == null) {
-        return;
-      }
-      if (other.Level != 0) {
-        Level = other.Level;
-      }
+      if (other == null) return;
+      if (other.Level != 0) Level = other.Level;
       if (other.reward_ != null) {
-        if (reward_ == null) {
-          Reward = new global::EggLink.DanhengServer.Proto.ItemList();
-        }
+        if (reward_ == null) Reward = new global::EggLink.DanhengServer.Proto.ItemList();
         Reward.MergeFrom(other.Reward);
       }
-      if (other.Retcode != 0) {
-        Retcode = other.Retcode;
-      }
-      if (other.ShopId != 0) {
-        ShopId = other.ShopId;
-      }
+      if (other.Retcode != 0) Retcode = other.Retcode;
+      if (other.ShopId != 0) ShopId = other.ShopId;
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
 
@@ -239,25 +235,14 @@ namespace EggLink.DanhengServer.Proto {
           default:
             _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
             break;
-          case 24: {
-            Level = input.ReadUInt32();
-            break;
-          }
+          case 24: { Level = input.ReadUInt32(); break; }
           case 82: {
-            if (reward_ == null) {
-              Reward = new global::EggLink.DanhengServer.Proto.ItemList();
-            }
+            if (reward_ == null) Reward = new global::EggLink.DanhengServer.Proto.ItemList();
             input.ReadMessage(Reward);
             break;
           }
-          case 96: {
-            Retcode = input.ReadUInt32();
-            break;
-          }
-          case 120: {
-            ShopId = input.ReadUInt32();
-            break;
-          }
+          case 96: { Retcode = input.ReadUInt32(); break; }
+          case 120: { ShopId = input.ReadUInt32(); break; }
         }
       }
     #endif
@@ -272,25 +257,14 @@ namespace EggLink.DanhengServer.Proto {
           default:
             _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
             break;
-          case 24: {
-            Level = input.ReadUInt32();
-            break;
-          }
+          case 24: { Level = input.ReadUInt32(); break; }
           case 82: {
-            if (reward_ == null) {
-              Reward = new global::EggLink.DanhengServer.Proto.ItemList();
-            }
+            if (reward_ == null) Reward = new global::EggLink.DanhengServer.Proto.ItemList();
             input.ReadMessage(Reward);
             break;
           }
-          case 96: {
-            Retcode = input.ReadUInt32();
-            break;
-          }
-          case 120: {
-            ShopId = input.ReadUInt32();
-            break;
-          }
+          case 96: { Retcode = input.ReadUInt32(); break; }
+          case 120: { ShopId = input.ReadUInt32(); break; }
         }
       }
     }
