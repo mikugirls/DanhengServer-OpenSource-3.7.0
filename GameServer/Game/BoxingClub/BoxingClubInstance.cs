@@ -43,7 +43,20 @@ public class BoxingClubInstance(PlayerInstance player, uint challengeId, List<ui
             _log.Error($"[Boxing] 找不到挑战配置: {this.ChallengeId}");
             return;
         }
-
+		// 1. 使用模式匹配直接尝试获取配置并判定非空
+		if (!Data.GameData.BoxingClubStageData.TryGetValue((int)this.CurrentMatchEventId, out var stageBuffConfig) && stageBuffConfig is not null)
+		{
+		// 此时编译器完全确定 stageBuffConfig 不为 null
+		if (stageBuffConfig.BuffID != 0 && !SelectedBuffs.Contains((uint)stageBuffConfig.BuffID))
+		{
+        SelectedBuffs.Add((uint)stageBuffConfig.BuffID);
+        _log.Info($"[Boxing] 自动注入 Buff: {stageBuffConfig.BuffID}");
+		}
+		}
+		else
+		{
+		_log.Warn($"[Boxing] 未找到 EventID {this.CurrentMatchEventId} 的 Buff 配置。");
+		}
         int actualStageId = (int)(CurrentMatchEventId * 10) + Player.Data.WorldLevel;
         if (!Data.GameData.StageConfigData.TryGetValue(actualStageId, out var stageConfig)) 
         {
@@ -119,7 +132,7 @@ public class BoxingClubInstance(PlayerInstance player, uint challengeId, List<ui
         {
             if (req.Stt != null)
             {
-                this.TotalUsedTurns += req.Stt.TotalBattleTurns;
+                this.TotalUsedTurns += req.Stt.RoundCnt;
             }
             await HandleBattleWin();
         }
@@ -282,10 +295,10 @@ public class BoxingClubInstance(PlayerInstance player, uint challengeId, List<ui
         }
 
         // 清理 Slot 19
-        await (Player.LineupManager?.SetExtraLineup(ExtraLineupType.LineupNone) ?? ValueTask.CompletedTask);
+        //await (Player.LineupManager?.SetExtraLineup(ExtraLineupType.LineupNone) ?? ValueTask.CompletedTask);
         
-        if (Player.BoxingClubManager != null)
-            Player.BoxingClubManager.ChallengeInstance = null;
+       // if (Player.BoxingClubManager != null)
+       //     Player.BoxingClubManager.ChallengeInstance = null;
 
         _log.Info($"[Boxing] 挑战 {this.ChallengeId} 结算完成并已清理。");
     }
