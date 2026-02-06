@@ -25,6 +25,7 @@ public class BoxingClubInstance(PlayerInstance player, uint challengeId, List<ui
     public int CurrentRoundIndex { get; set; } = 0;
     public uint CurrentMatchEventId { get; set; } = 0;
     public uint CurrentOpponentIndex { get; set; } = 0;
+	public uint TotalUsedTurns { get; set; } = 0;
 
     /// <summary>
     /// 进入战斗：负责槽位 19 的写入、同步以及战斗场景切换
