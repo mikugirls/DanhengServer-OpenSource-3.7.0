@@ -58,16 +58,16 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
      * UI 翻页的核心开关。后端从 0 开始计数（界面显示 1/4）。
      * 打完第 1 轮后发 1（显示 2/4），以此类推。
      * 只有此值发生递增位移，客户端才会启动转盘动画并滚动至下一位对手。
-	 *  Tag 13 (CPGOIPICPJF)  : 历史最快回合数 (MinRounds)。
-	 *  Tag 9  (NAALCBMBPGC)  : 当前挑战实时累计回合数 (TotalUsedTurns)决定评价。
+	 * Tag 13 (CPGOIPICPJF)  : 历史最快回合数 (MinRounds)。
+	 * Tag 9  (NAALCBMBPGC)  : 当前挑战实时累计回合数 (TotalUsedTurns)决定评价。
      */
    public List<FCIHIJLOMGA> GetChallengeList()
     {
         var challengeInfos = new List<FCIHIJLOMGA>();
         if (EnableLog) _log.Debug($"[Sync] 正在加载玩家 {Player.Uid} 的数据库持久化搏击记录...");
 
-        // 获取数据库对象中的挑战字典
-        var dbChallenges = Player.BoxingClubData?.Challenges ?? new();
+        // 获取数据库对象中的挑战字典 (增加安全空检查)
+        var dbChallenges = Player.BoxingClubData?.Challenges ?? new Dictionary<int, Database.BoxingClub.BoxingClubInfo>();
 
         foreach (var config in GameData.BoxingClubChallengeData.Values)
         {
@@ -107,7 +107,7 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
                     {
                         foreach (var trialId in config.SpecialAvatarIDList)
                         {
-                            Player.AvatarManager!.GetTrialAvatar((int)trialId);
+                            Player.AvatarManager?.GetTrialAvatar((int)trialId);
                             info.AvatarList.Add((uint)trialId);
                         }
                     }
@@ -136,11 +136,14 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
             // [数据库整合]：如果请求没传阵容，尝试从数据库获取该关卡的记忆阵容 (Tag 3)
 			var dbChallenges = Player.BoxingClubData?.Challenges;
             if (dbChallenges != null && dbChallenges.TryGetValue((int)req.ChallengeId, out var dbInfo))
-		{
-    // 如果找到了数据库记录，执行相关逻辑
-    _log.Info($"[Match] 从数据库恢复记忆阵容: ChallengeId {req.ChallengeId}");
-    safeAvatarList.AddRange(dbInfo.Lineup.Select(a => (uint)a.BaseAvatarId));
-		}
+			{
+				// 如果找到了数据库记录，执行相关逻辑
+				_log.Info($"[Match] 从数据库恢复记忆阵容: ChallengeId {req.ChallengeId}");
+				if (dbInfo.Lineup != null) 
+				{
+					safeAvatarList.AddRange(dbInfo.Lineup.Select(a => (uint)a.BaseAvatarId));
+				}
+			}
         }
         
         ChallengeInstance = new BoxingClubInstance(Player, req.ChallengeId, safeAvatarList);
@@ -219,13 +222,16 @@ public FCIHIJLOMGA ConstructSnapshot(BoxingClubInstance inst)
         if (EnableLog) _log.Info($"[Sync] 快照队伍注入: {string.Join(",", inst.SelectedAvatars)}");
     }
 
-    // 3. 注入匹配到的对手 ID (Tag 1)
-    if (inst.CurrentMatchEventId != 0) 
+    // 3. 注入匹配到的对手 ID 池 (Tag 1)
+    // 第一次进入或匹配时注入当前 StageGroup 的完整 Event 列表，解决转盘报错
+    if (inst.CurrentStageGroupId != 0 && GameData.BoxingClubStageGroupData.TryGetValue((int)inst.CurrentStageGroupId, out var groupConfig))
     {
-        // 建议：为了转盘动画平滑，如果可能的话，这里注入完整的 DisplayEventIDList
         snapshot.HLIBIJFHHPG.Clear();
-        snapshot.HLIBIJFHHPG.Add(inst.CurrentMatchEventId);
-        _log.Info($"[Sync] 对手ID注入: {inst.CurrentMatchEventId}");
+        if (groupConfig.DisplayEventIDList != null)
+        {
+            snapshot.HLIBIJFHHPG.AddRange(groupConfig.DisplayEventIDList.Select(x => (uint)x));
+        }
+        _log.Info($"[Sync] 对手池(Tag 1)已注入 {snapshot.HLIBIJFHHPG.Count} 个对手。");
     }
 
     return snapshot;
@@ -268,7 +274,17 @@ public FCIHIJLOMGA ConstructSnapshot(BoxingClubInstance inst)
     public FCIHIJLOMGA ProcessGiveUpChallenge(uint challengeId, bool isFullReset)
     {
         if (isFullReset) ChallengeInstance = null;
-        return new FCIHIJLOMGA { ChallengeId = challengeId, LLFOFPNDAFG = 1 };
+        
+        // 增加数据库读取以保持 UI 状态
+        Player.BoxingClubData?.Challenges.TryGetValue((int)challengeId, out var dbInfo);
+        
+        return new FCIHIJLOMGA 
+        { 
+            ChallengeId = challengeId, 
+            LLFOFPNDAFG = 1,
+            APLKNJEGBKF = dbInfo?.IsFinished ?? false,
+            CPGOIPICPJF = (uint)(dbInfo?.MinRounds ?? 0)
+        };
     }
 
    public FCIHIJLOMGA? ProcessChooseResonance(uint challengeId, uint resonanceId)
