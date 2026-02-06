@@ -141,28 +141,42 @@ public class BoxingClubInstance(PlayerInstance player, uint challengeId, List<ui
             await HandleBattleLoss();
         }
     }
-
-    private async ValueTask HandleBattleWin()
+private async ValueTask HandleBattleWin()
 {
     this.CurrentRoundIndex++;
-    _log.Info($"[Boxing] 战斗胜利，推进至轮次索引: {this.CurrentRoundIndex}");
+    _log.Info($"[Boxing] 战斗胜利，进度推至: {this.CurrentRoundIndex}");
 
-    // --- 核心修改：动态获取配置的总轮次 ---
+    // 赛季 2 判断 (ChallengeId >= 6)
+    bool isSeason2 = this.ChallengeId >= 6;
+
     int totalRounds = 0;
     if (Data.GameData.BoxingClubStageGroupData.TryGetValue((int)this.CurrentStageGroupId, out var groupConfig))
     {
-        // EventIDList 的 Count 决定了这一关到底有几场战斗
         totalRounds = groupConfig.EventIDList?.Count ?? 0;
     }
 
-    // 使用配置动态判定是否通关
     if (this.CurrentRoundIndex >= totalRounds && totalRounds > 0)
     {
         await FinishChallenge();
     }
     else
     {
-        await ProceedToNextRound();
+        if (isSeason2)
+        {
+            // 【核心改动】赛季 2 胜利后，只同步进度快照，不自动匹配
+            // 客户端收到进度增加 (Tag 14) 后，会自动根据配置弹出三选一 UI
+            var snapshot = Player.BoxingClubManager?.ConstructSnapshot(this);
+            if (snapshot != null)
+            {
+                await Player.SendPacket(new PacketBoxingClubChallengeUpdateScNotify(snapshot));
+            }
+            _log.Info("[Boxing] 赛季 2：等待客户端发起共鸣选择(4281)...");
+        }
+        else
+        {
+            // 赛季 1：保持原样，直接进入下一轮匹配并推送到转盘
+            await ProceedToNextRound();
+        }
     }
 }
 

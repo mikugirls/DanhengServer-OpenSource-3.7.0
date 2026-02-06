@@ -180,12 +180,22 @@ public FCIHIJLOMGA ConstructSnapshot(BoxingClubInstance inst)
     // [数据库整合]：获取持久化的历史数据
     Database.BoxingClub.BoxingClubInfo? dbInfo = null;
     Player.BoxingClubData?.Challenges.TryGetValue((int)inst.ChallengeId, out dbInfo);
-
+	// 【核心修正逻辑】
+    uint resonanceIdToSync = 1; // 默认值（Season 1）
+    if (inst.ChallengeId >= 6)
+    {
+        // 如果是 Season 2，LLFOFPNDAFG 必须传当前生效的共鸣 ID
+        // 优先取最近一次选中的 Buff
+        resonanceIdToSync = inst.SelectedBuffs.LastOrDefault();
+        
+        // 如果还没有选过 Buff（初始状态），可以给 0 或根据配置给个默认值
+        if (resonanceIdToSync == 0) resonanceIdToSync = 0; 
+    }
     var snapshot = new FCIHIJLOMGA 
     {
         ChallengeId = inst.ChallengeId,
         HJMGLEMJHKG = inst.CurrentStageGroupId, // 组怪物ID
-        LLFOFPNDAFG = 1,                        // 赛季ID
+        LLFOFPNDAFG = resonanceIdToSync,        // 【同步点】Season 1 传 1, Season 2 传 BuffID                     // 赛季ID
         NAALCBMBPGC = inst.TotalUsedTurns,      // [Tag 9] 当前挑战实时累计回合数
         HNPEAPPMGAA = (uint)(inst.CurrentRoundIndex), // [Tag 14] 进度 (0-3)
         
@@ -280,26 +290,117 @@ public FCIHIJLOMGA ConstructSnapshot(BoxingClubInstance inst)
             CPGOIPICPJF = (uint)(dbInfo?.MinRounds ?? 0)
         };
     }
-
-   public FCIHIJLOMGA? ProcessChooseResonance(uint challengeId, uint resonanceId)
+/// <summary>
+/// 1. 赛季 2 初始共鸣选择 (4281)
+/// </summary>
+public FCIHIJLOMGA? ProcessChooseResonance(uint challengeId, uint resonanceId)
 {
-    if (ChallengeInstance == null) return null;
-    
-    _log.Info($"[Boxing] 选Buff开始，ID: {resonanceId}");
+    _log.Info($"[Boxing] 初始共鸣选择: ChallengeId {challengeId}, ResonanceId {resonanceId}");
 
-    // 1. 记录 Buff
-    if (resonanceId != 0) ChallengeInstance.SelectedBuffs.Add(resonanceId);
+    // 初始化实例
+    if (ChallengeInstance == null || ChallengeInstance.ChallengeId != challengeId)
+    {
+        ChallengeInstance = new BoxingClubInstance(Player, challengeId, new List<uint>());
+    }
 
-    // 2. 先增加轮次进度 (重要：先加进度，ProcessMatchRequest 才会取到下一轮的 GroupID)
-    ChallengeInstance.CurrentRoundIndex++;
-    
-    // 3. 【核心修正】模拟匹配请求，为下一轮生成 MatchEventId 和 StageGroupId
-    var mockReq = new MatchBoxingClubOpponentCsReq { ChallengeId = challengeId };
-    ProcessMatchRequest(mockReq); 
+    // 记录 Buff
+    if (resonanceId != 0 && !ChallengeInstance.SelectedBuffs.Contains(resonanceId))
+    {
+        ChallengeInstance.SelectedBuffs.Add(resonanceId);
+    }
 
-    _log.Info($"[Boxing] 选Buff完成。进入第 {ChallengeInstance.CurrentRoundIndex} 轮, 新对手ID: {ChallengeInstance.CurrentMatchEventId}");
+    // 查找映射组
+    if (GameData.BoxingClubChallengeData.TryGetValue((int)challengeId, out var config))
+    {
+        if (config.StageBuffAndGroupMap != null && 
+            config.StageBuffAndGroupMap.TryGetValue(resonanceId.ToString(), out var gId))
+        {
+            ChallengeInstance.CurrentStageGroupId = (uint)gId;
+        }
+    }
 
-    // 4. 返回包含新对手池和新进度的快照
+    // 统一执行匹配逻辑 (根据当前 RoundIndex 分配怪)
+    UpdateMatchEvent(ChallengeInstance);
+
     return ConstructSnapshot(ChallengeInstance);
 }
+
+/// <summary>
+/// 2. 赛季 2 战斗间隙 Buff 选择 (4292) - 解决“怪不变”的关键
+/// </summary>
+public FCIHIJLOMGA? ProcessOptionalBuff(uint challengeId, uint optionalBuffId)
+{
+    _log.Info($"[Boxing] 战斗间隙选 Buff: ChallengeId {challengeId}, BuffId {optionalBuffId}");
+
+    if (ChallengeInstance == null) return null;
+
+    // 记录新增 Buff
+    if (optionalBuffId != 0 && !ChallengeInstance.SelectedBuffs.Contains(optionalBuffId))
+    {
+        ChallengeInstance.SelectedBuffs.Add(optionalBuffId);
+    }
+
+    // 赛季 2 核心：中间选的 Buff 会决定下一轮进哪个 StageGroup
+    if (GameData.BoxingClubChallengeData.TryGetValue((int)challengeId, out var config))
+    {
+        if (config.StageBuffAndGroupMap != null && 
+            config.StageBuffAndGroupMap.TryGetValue(optionalBuffId.ToString(), out var gId))
+        {
+            ChallengeInstance.CurrentStageGroupId = (uint)gId;
+            _log.Info($"[Boxing] 路径分支切换 -> 新 GroupId: {gId}");
+        }
+    }
+
+    // 重新匹配怪物（此时 RoundIndex 应该已经被胜利逻辑累加了）
+    UpdateMatchEvent(ChallengeInstance);
+
+    return ConstructSnapshot(ChallengeInstance);
+}
+
+/// <summary>
+/// 3. 阵容同步 (4257)
+/// </summary>
+public FCIHIJLOMGA? ProcessResonanceLineup(uint challengeId, IList<GNEIBBPOAAB> avatarList)
+{
+    var selectedIds = avatarList.Select(a => a.AvatarId).ToList();
+    _log.Info($"[Boxing] 选人同步: Challenge {challengeId}, 阵容: {string.Join(",", selectedIds)}");
+
+    if (ChallengeInstance == null || ChallengeInstance.ChallengeId != challengeId)
+    {
+        ChallengeInstance = new BoxingClubInstance(Player, challengeId, selectedIds);
+        // 如果是直接跳到这步的，补一下匹配逻辑
+        UpdateMatchEvent(ChallengeInstance);
+    }
+    else
+    {
+        ChallengeInstance.SelectedAvatars.Clear();
+        ChallengeInstance.SelectedAvatars.AddRange(selectedIds);
+    }
+
+    return ConstructSnapshot(ChallengeInstance);
+}
+
+/// <summary>
+/// 通用私有方法：基于当前组和轮次索引精准匹配怪物
+/// </summary>
+private void UpdateMatchEvent(BoxingClubInstance inst)
+{
+    if (GameData.BoxingClubStageGroupData.TryGetValue((int)inst.CurrentStageGroupId, out var groupConfig))
+    {
+        var eventList = groupConfig.EventIDList;
+        if (eventList != null && eventList.Count > 0)
+        {
+            // 根据当前轮次索引（0=第一场, 1=第二场...）取怪
+            int index = (int)inst.CurrentRoundIndex;
+            
+            // 安全检查：如果配置里只有1个怪但打到了第2轮，则取最后一个
+            if (index >= eventList.Count) index = eventList.Count - 1;
+
+            inst.CurrentMatchEventId = (uint)eventList[index];
+            
+            _log.Info($"[Boxing] 匹配成功 -> 第 {inst.CurrentRoundIndex + 1} 场, EventId: {inst.CurrentMatchEventId}");
+        }
+    }
+}
+ 
 }
