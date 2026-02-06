@@ -128,6 +128,7 @@ public partial class PlayerInstance(PlayerData data)
     public SceneData? SceneData { get; private set; }
 	public ExpeditionData? ExpeditionData { get; private set; } // 添加这一行
 	public CityShopData? CityShopData { get; private set; }
+	public EggLink.DanhengServer.Database.BoxingClub.BoxingClubData? BoxingClubData { get; private set; }
     public HeartDialData? HeartDialData { get; private set; }
     public TutorialData? TutorialData { get; private set; }
     public TutorialGuideData? TutorialGuideData { get; private set; }
@@ -230,6 +231,7 @@ public partial class PlayerInstance(PlayerData data)
         BattleCollegeData = InitializeDatabase<BattleCollegeData>();
         FriendRecordData = InitializeDatabase<FriendRecordData>();
 		ExpeditionData = InitializeDatabase<ExpeditionData>(); // 添加这一行
+		BoxingClubData = InitializeDatabase<EggLink.DanhengServer.Database.BoxingClub.BoxingClubData>();
 		CityShopData = InitializeDatabase<CityShopData>();
         Components.Add(new SwitchHandComponent(this));
         
