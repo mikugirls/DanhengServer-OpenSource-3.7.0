@@ -130,19 +130,28 @@ public class BoxingClubInstance(PlayerInstance player, uint challengeId, List<ui
     }
 
     private async ValueTask HandleBattleWin()
-    {
-        this.CurrentRoundIndex++;
-        _log.Info($"[Boxing] 战斗胜利，推进至轮次索引: {this.CurrentRoundIndex}");
+{
+    this.CurrentRoundIndex++;
+    _log.Info($"[Boxing] 战斗胜利，推进至轮次索引: {this.CurrentRoundIndex}");
 
-        if (this.CurrentRoundIndex >= 4)
-        {
-            await FinishChallenge();
-        }
-        else
-        {
-            await ProceedToNextRound();
-        }
+    // --- 核心修改：动态获取配置的总轮次 ---
+    int totalRounds = 0;
+    if (Data.GameData.BoxingClubStageGroupData.TryGetValue((int)this.CurrentStageGroupId, out var groupConfig))
+    {
+        // EventIDList 的 Count 决定了这一关到底有几场战斗
+        totalRounds = groupConfig.EventIDList?.Count ?? 0;
     }
+
+    // 使用配置动态判定是否通关
+    if (this.CurrentRoundIndex >= totalRounds && totalRounds > 0)
+    {
+        await FinishChallenge();
+    }
+    else
+    {
+        await ProceedToNextRound();
+    }
+}
 
     private async ValueTask HandleBattleLoss()
     {
@@ -154,37 +163,40 @@ public class BoxingClubInstance(PlayerInstance player, uint challengeId, List<ui
     }
 
     private async ValueTask ProceedToNextRound()
+{
+    // 依然使用当前的 GroupId，不要去重新拿索引 0，因为组 ID 是恒定的
+    if (Data.GameData.BoxingClubStageGroupData.TryGetValue((int)this.CurrentStageGroupId, out var groupConfig))
     {
-        if (Data.GameData.BoxingClubChallengeData.TryGetValue((int)this.ChallengeId, out var config))
+        // 1. 更新下一场战斗的 EventID (用于下一场进入战斗时的 StageID 计算)
+        // 这里的 EventIDList 是顺序对应的：Index 0 是第一关，Index 1 是第二关...
+        if (groupConfig.EventIDList != null && this.CurrentRoundIndex < groupConfig.EventIDList.Count)
         {
-            uint persistentGroupId = (uint)config.StageGroupList[0];
-            this.CurrentStageGroupId = persistentGroupId;
-
-            if (Data.GameData.BoxingClubStageGroupData.TryGetValue((int)persistentGroupId, out var groupConfig))
-            {
-                var eventPool = groupConfig.DisplayEventIDList;
-                if (eventPool != null && eventPool.Count > 0)
-                {
-                    int poolIndex = Math.Min(this.CurrentRoundIndex, eventPool.Count - 1);
-                    this.CurrentMatchEventId = (uint)eventPool[poolIndex];
-
-                    var snapshot = Player.BoxingClubManager?.ConstructSnapshot(this);
-                    if (snapshot != null)
-                    {
-                        snapshot.HJMGLEMJHKG = persistentGroupId; 
-                        snapshot.HNPEAPPMGAA = (uint)this.CurrentRoundIndex;
-                        snapshot.NAALCBMBPGC = this.TotalUsedTurns; // 同步当前累计回合
-                        
-                        snapshot.HLIBIJFHHPG.Clear();
-                        snapshot.HLIBIJFHHPG.AddRange(eventPool.Select(x => (uint)x));
-
-                        await Player.SendPacket(new PacketBoxingClubChallengeUpdateScNotify(snapshot));
-                    }
-                    Player.SceneInstance?.SyncLineup();
-                }
-            }
+            this.CurrentMatchEventId = (uint)groupConfig.EventIDList[this.CurrentRoundIndex];
         }
+
+        // 2. 构造通知包 (进位演出)
+        var snapshot = Player.BoxingClubManager?.ConstructSnapshot(this);
+        if (snapshot != null)
+        {
+            // 确保同步最新的回合数和进度指针
+            snapshot.HJMGLEMJHKG = this.CurrentStageGroupId; 
+            snapshot.HNPEAPPMGAA = (uint)this.CurrentRoundIndex; // 此时已经是 1, 2...
+            snapshot.NAALCBMBPGC = this.TotalUsedTurns;
+            
+            // 必须重新下发全量展示池，否则转盘没燃料
+            if (groupConfig.DisplayEventIDList != null)
+            {
+                snapshot.HLIBIJFHHPG.Clear();
+                snapshot.HLIBIJFHHPG.AddRange(groupConfig.DisplayEventIDList.Select(x => (uint)x));
+            }
+
+            await Player.SendPacket(new PacketBoxingClubChallengeUpdateScNotify(snapshot));
+        }
+        
+        Player.SceneInstance?.SyncLineup();
+        _log.Info($"[Boxing] 进位成功。当前进度: {this.CurrentRoundIndex}, 下一场 EventId: {this.CurrentMatchEventId}");
     }
+}
 
     /// <summary>
     /// 封装：通关结算 (持久化数据库、发奖、释放环境)
@@ -260,12 +272,12 @@ public class BoxingClubInstance(PlayerInstance player, uint challengeId, List<ui
             // 最终状态同步协议 (4244)
             await Player.SendPacket(new PacketBoxingClubChallengeUpdateScNotify(new FCIHIJLOMGA 
             {
-                ChallengeId = this.ChallengeId,
-                HNPEAPPMGAA = 0,    
-                APLKNJEGBKF = true, 
-                LLFOFPNDAFG = 1,
-                NAALCBMBPGC = this.TotalUsedTurns,
-                CPGOIPICPJF = minRounds 
+               ChallengeId = this.ChallengeId,
+    		   // HNPEAPPMGAA 设为 0 或不传，配合组 ID 缺失，让客户端回到选人主界面
+    		   APLKNJEGBKF = true, 
+    		   LLFOFPNDAFG = 1,
+    			NAALCBMBPGC = this.TotalUsedTurns,
+    			CPGOIPICPJF = minRounds 
             }));
         }
 
