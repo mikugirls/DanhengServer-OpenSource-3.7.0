@@ -108,61 +108,133 @@ public class BoxingClubInstance(PlayerInstance player, uint challengeId, List<ui
     /// <summary>
     /// 结算拦截：判断胜负并决定是否重置阵容
     /// </summary>
-
- 
+	/// <summary>
+    /// 核心结算拦截：处理战斗结束后的逻辑分支
+    /// </summary>
     public async ValueTask OnBattleEnd(PVEBattleResultCsReq req)
-{
-   if (req.EndStatus == BattleEndStatus.BattleEndWin)
     {
-        // 1. 推进轮次进度
-        this.CurrentRoundIndex++; 
-
-        if (Player.BoxingClubManager != null)
+        if (req.EndStatus == BattleEndStatus.BattleEndWin)
         {
-            // 获取配置
-            if (Data.GameData.BoxingClubChallengeData.TryGetValue((int)this.ChallengeId, out var config))
-            {
-                // 【关键修正】：强制使用第一轮的 GroupID (索引 0)，保持组 ID 一致
-                uint persistentGroupId = (uint)config.StageGroupList[0];
-                this.CurrentStageGroupId = persistentGroupId;
-
-                if (Data.GameData.BoxingClubStageGroupData.TryGetValue((int)persistentGroupId, out var groupConfig))
-                {
-                    var eventPool = groupConfig.DisplayEventIDList;
-                    if (eventPool != null && eventPool.Count > 0)
-                    {
-                        // 2. 依然根据轮次索引切换实际战斗的怪物 ID
-                        int poolIndex = Math.Min(this.CurrentRoundIndex, eventPool.Count - 1);
-                        this.CurrentMatchEventId = (uint)eventPool[poolIndex];
-
-                        // 3. 构造快照
-                        var snapshot = Player.BoxingClubManager.ConstructSnapshot(this);
-                        
-                        // 强制覆盖：组 ID 不变，进度增加
-                        snapshot.HJMGLEMJHKG = persistentGroupId; 
-                        snapshot.HNPEAPPMGAA = (uint)this.CurrentRoundIndex;
-                        
-                        // 注入完整的池子（确保动画有弹药）
-                        snapshot.HLIBIJFHHPG.Clear();
-                        snapshot.HLIBIJFHHPG.AddRange(eventPool.Select(x => (uint)x));
-
-                        _log.Info($"[Boxing-Fix] 组ID锁死:{snapshot.HJMGLEMJHKG} | 进度:{snapshot.HNPEAPPMGAA} | 下场怪:{this.CurrentMatchEventId}");
-
-                        await Player.SendPacket(new PacketBoxingClubChallengeUpdateScNotify(snapshot));
-                    }
-                }
-            }
-            await Player.SceneInstance!.SyncLineup();
+            await HandleBattleWin();
+        }
+        else
+        {
+            await HandleBattleLoss();
         }
     }
 
-    else
+    /// <summary>
+    /// 封装：处理胜利逻辑
+    /// </summary>
+    private async ValueTask HandleBattleWin()
     {
-        // 失败逻辑保持不变
-        await Player.LineupManager!.SetExtraLineup(ExtraLineupType.LineupNone);
-        if (Player.BoxingClubManager != null) Player.BoxingClubManager.ChallengeInstance = null;
+        this.CurrentRoundIndex++;
+        _log.Info($"[Boxing] 战斗胜利，推进至轮次索引: {this.CurrentRoundIndex}");
+
+        // 积分赛通常为 4 轮，达到 4 意味着 0,1,2,3 四场全胜
+        if (this.CurrentRoundIndex >= 4)
+        {
+            await FinishChallenge();
+        }
+        else
+        {
+            await ProceedToNextRound();
+        }
     }
-}
+
+    /// <summary>
+    /// 封装：处理失败逻辑
+    /// </summary>
+    private async ValueTask HandleBattleLoss()
+    {
+        _log.Info($"[Boxing] 挑战失败，正在重置状态。");
+        // 失败时必须释放额外阵容，否则玩家在大世界会被锁死在 Slot 19
+        await Player.LineupManager!.SetExtraLineup(ExtraLineupType.LineupNone);
+        
+        if (Player.BoxingClubManager != null) 
+            Player.BoxingClubManager.ChallengeInstance = null;
+    }
+
+    /// <summary>
+    /// 封装方法 1：推进至下一轮 (转盘动画与数据更新)
+    /// </summary>
+    private async ValueTask ProceedToNextRound()
+    {
+        if (Data.GameData.BoxingClubChallengeData.TryGetValue((int)this.ChallengeId, out var config))
+        {
+            // 保持组 ID 一致，避免客户端重载场景
+            uint persistentGroupId = (uint)config.StageGroupList[0];
+            this.CurrentStageGroupId = persistentGroupId;
+
+            if (Data.GameData.BoxingClubStageGroupData.TryGetValue((int)persistentGroupId, out var groupConfig))
+            {
+                var eventPool = groupConfig.DisplayEventIDList;
+                if (eventPool != null && eventPool.Count > 0)
+                {
+                    // 切换下场战斗怪物 ID
+                    int poolIndex = Math.Min(this.CurrentRoundIndex, eventPool.Count - 1);
+                    this.CurrentMatchEventId = (uint)eventPool[poolIndex];
+
+                    // 构造并发送同步快照
+                    var snapshot = Player.BoxingClubManager!.ConstructSnapshot(this);
+                    snapshot.HJMGLEMJHKG = persistentGroupId; 
+                    snapshot.HNPEAPPMGAA = (uint)this.CurrentRoundIndex;
+                    
+                    snapshot.HLIBIJFHHPG.Clear();
+                    snapshot.HLIBIJFHHPG.AddRange(eventPool.Select(x => (uint)x));
+
+                    await Player.SendPacket(new PacketBoxingClubChallengeUpdateScNotify(snapshot));
+                    await Player.SceneInstance!.SyncLineup();
+
+                    _log.Info($"[Boxing] 下一轮就绪: HN={snapshot.HNPEAPPMGAA}, NextMonster={this.CurrentMatchEventId}");
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// 封装方法 2：挑战完美达成结算
+    /// </summary>
+    private async ValueTask FinishChallenge()
+    {
+        _log.Info($"[Boxing] 挑战 {this.ChallengeId} 全部通关，执行结算流程。");
+
+        if (Data.GameData.BoxingClubChallengeData.TryGetValue((int)this.ChallengeId, out var config))
+        {
+            // 1. 发放奖励 (调用 InventoryManager 封装的方法)
+            var resItems = await Player.InventoryManager.HandleReward(config.FirstPassRewardID, notify: false, sync: true);
+
+            // 2. 发送大图展示通知 (4224)
+            var rewardNotify = new BoxingClubRewardScNotify {
+                ChallengeId = this.ChallengeId,
+                IsWin = true,
+                NAALCBMBPGC = 0,
+                Reward = new ItemList()
+            };
+            foreach (var item in resItems) {
+                rewardNotify.Reward.ItemList_.Add(new Item { ItemId = (uint)item.ItemId, ItemNum = (uint)item.Count });
+            }
+            await Player.SendPacket(new PacketBoxingClubRewardScNotify(rewardNotify));
+
+            // 3. 发送状态更新：进度归零且标记通关 (4244)
+            await Player.SendPacket(new PacketBoxingClubChallengeUpdateScNotify(new FCIHIJLOMGA {
+                ChallengeId = this.ChallengeId,
+                HNPEAPPMGAA = 0,    // 进度归零
+                APLKNJEGBKF = true, // 标记通关
+                LLFOFPNDAFG = 1     // 赛季ID
+            }));
+        }
+
+        // 4. 清理工作：释放阵容锁定并销毁实例
+        await Player.LineupManager!.SetExtraLineup(ExtraLineupType.LineupNone);
+        
+        if (Player.BoxingClubManager != null) 
+            Player.BoxingClubManager.ChallengeInstance = null;
+
+        _log.Info($"[Boxing] 挑战完成，阵容已释放，实例已置空。");
+    }
+ 
+   	
 	public void OnBattleStart(BattleInstance battle)
 	{
     // 关键：在这里挂钩 OnBattleEnd 方法
