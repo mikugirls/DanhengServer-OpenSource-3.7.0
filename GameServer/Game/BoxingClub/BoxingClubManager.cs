@@ -9,7 +9,7 @@ namespace EggLink.DanhengServer.GameServer.Game.BoxingClub;
 public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player)
 {
     private static readonly Logger _log = new("BoxingClub");
-    public static bool EnableLog = true; 
+    public static bool EnableLog = false; 
     
     public BoxingClubInstance? ChallengeInstance { get; set; }
 
@@ -61,52 +61,81 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
 	 * Tag 13 (CPGOIPICPJF)  : 历史最快回合数 (MinRounds)。
 	 * Tag 9  (NAALCBMBPGC)  : 当前挑战实时累计回合数 (TotalUsedTurns)决定评价。
      */
-  public List<FCIHIJLOMGA> GetChallengeList()
+ public List<FCIHIJLOMGA> GetChallengeList()
 {
     var challengeInfos = new List<FCIHIJLOMGA>();
+    // 获取存档数据，如果没有则初始化空字典
     var dbChallenges = Player.BoxingClubData?.Challenges ?? new Dictionary<int, Database.BoxingClub.BoxingClubInfo>();
 
+    // 遍历所有关卡配置
     foreach (var config in GameData.BoxingClubChallengeData.Values)
     {
         uint cid = (uint)config.ChallengeID;
         FCIHIJLOMGA info;
 
-        // 情况 A：玩家正在挑战中，由 ConstructSnapshot 处理实时 Tag
+        // 如果当前玩家正在挑战该关卡，直接构造快照（包含当前选人状态）
         if (ChallengeInstance != null && ChallengeInstance.ChallengeId == cid)
         {
             info = ConstructSnapshot(ChallengeInstance);
+            //Logger.GetByClassName().Info($"[BoxingDebug] 关卡 {cid} 处于实时挑战状态，使用快照数据。");
         }
         else
         {
-            // 情况 B：关卡静止态，仅同步历史数据
+            // 否则从数据库读取历史记录
             dbChallenges.TryGetValue((int)cid, out var dbInfo);
 
             info = new FCIHIJLOMGA
             {
                 ChallengeId = cid,
-                LLFOFPNDAFG = 1, // 赛季 ID
-                APLKNJEGBKF = dbInfo?.IsFinished ?? false, // 是否完结
-                CPGOIPICPJF = (uint)(dbInfo?.MinRounds ?? 0), // 历史战绩
-                // 【核心修正】不给 HNPEAPPMGAA (Tag 14), HJMGLEMJHKG (Tag 4), NAALCBMBPGC (Tag 9) 赋值
-                // 此时 Protobuf 不会序列化这些字段，客户端处于“待机”状态。
+                LLFOFPNDAFG = 1, // 状态位，通常代表已解锁
+                APLKNJEGBKF = dbInfo?.IsFinished ?? false,
+                CPGOIPICPJF = (uint)(dbInfo?.MinRounds ?? 0),
             };
 
-            // 注入选人记忆列表 (Tag 3)
-            if (dbInfo?.Lineup != null && dbInfo.Lineup.Count > 0)
-            {
-                info.AvatarList.AddRange(dbInfo.Lineup.Select(x => (uint)x.BaseAvatarId));
-            }
-            else if (config.SpecialAvatarIDList != null)
+            // --- 打印点 A：开始注入数据 ---
+            //Logger.GetByClassName().Debug($"[BoxingDebug] 开始处理关卡 {cid} 的 ID 列表...");
+
+            // 1. 注入试用角色 (强制排在列表最前面)
+            // 模式 1 不显示通常是因为这里发了 4 位 ID 而不是 7 位 ID
+            if (config.SpecialAvatarIDList != null)
             {
                 foreach (var trialId in config.SpecialAvatarIDList)
                 {
-                    Player.AvatarManager?.GetTrialAvatar((int)trialId);
-                    info.AvatarList.Add((uint)trialId);
+                    uint tId = (uint)trialId; // 保持 7 位 ID (如 3051204)
+                    
+                    // 预加载试用角色到 AvatarManager 缓存，确保 ScRsp 包能同步到
+                    Player.AvatarManager?.GetTrialAvatar((int)tId);
+
+                    if (!info.AvatarList.Contains(tId))
+                    {
+                        info.AvatarList.Add(tId);
+                        //Logger.GetByClassName().Info($" -> [试用注入] 关卡 {cid} 加入试用角色: {tId}");
+                    }
+                }
+            }
+
+            // 2. 注入历史记忆阵容 (通常是 4 位 ID)
+            if (dbInfo?.Lineup != null && dbInfo.Lineup.Count > 0)
+            {
+                foreach (var avatar in dbInfo.Lineup)
+                {
+                    uint avatarId = (uint)avatar.BaseAvatarId;
+                    if (!info.AvatarList.Contains(avatarId))
+                    {
+                        info.AvatarList.Add(avatarId);
+                        //Logger.GetByClassName().Info($" -> [存档注入] 关卡 {cid} 加入历史角色: {avatarId}");
+                    }
                 }
             }
         }
+
+        // --- 打印点 B：汇总结果 ---
+        //string idsLog = string.Join(", ", info.AvatarList);
+        //Logger.GetByClassName().Info($"[BoxingDebug] 关卡 {cid} 处理完成。最终 AvatarList: [{idsLog}]");
+
         challengeInfos.Add(info);
     }
+
     return challengeInfos;
 }
 
@@ -214,14 +243,17 @@ public FCIHIJLOMGA ConstructSnapshot(BoxingClubInstance inst)
         snapshot.MDLACHDKMPH.Clear();
         foreach (var avatarId in inst.SelectedAvatars)
         {
-            snapshot.MDLACHDKMPH.Add(new IJKJJDHLKLB 
-            { 
-                AvatarId = avatarId, 
-                AvatarType = AvatarType.AvatarFormalType 
-            });
-        }
-        
-        if (EnableLog) _log.Info($"[Sync] 快照队伍注入: {string.Join(",", inst.SelectedAvatars)}");
+          // 根据 ID 判断类型：大于 10000 的视为试用角色
+		var avatarType = avatarId > 10000 ? AvatarType.AvatarTrialType : AvatarType.AvatarFormalType;
+
+		snapshot.MDLACHDKMPH.Add(new IJKJJDHLKLB 
+		{ 
+        AvatarId = avatarId, 
+        AvatarType = avatarType 
+		});
+
+		if (EnableLog) _log.Debug($"[Sync] 注入快照角色: {avatarId} 类型: {avatarType}");
+}
     }
 
     // 3. 注入匹配到的对手 ID 池 (Tag 1)

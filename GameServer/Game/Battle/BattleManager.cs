@@ -364,7 +364,7 @@ public class BattleManager(PlayerInstance player) : BasePlayerManager(player)
 
 
 
-   public async ValueTask EndBattle(PVEBattleResultCsReq req)
+  public async ValueTask EndBattle(PVEBattleResultCsReq req)
 {
     InvokeOnPlayerQuitBattle(Player, req);
 
@@ -377,90 +377,59 @@ public class BattleManager(PlayerInstance player) : BasePlayerManager(player)
 
     battle.BattleEndStatus = req.EndStatus;
     battle.BattleResult = req;
+	bool isBoxing = Player.BoxingClubManager?.ChallengeInstance != null;
+    // --- 1. 掉落结算 ---
+    if (!isBoxing && req.EndStatus == BattleEndStatus.BattleEndWin)
+	{
+    // 只有普通战斗（副本、野怪等）才走这里的通用掉落流程
+    await Player.DropManager!.ProcessBattleRewards(battle, req);
+    if (battle.StaminaCost > 0) await Player.SpendStamina(battle.StaminaCost);
+	}
 
-    var updateStatus = true;
-    var teleportToAnchor = false;
-    var minimumHp = 0;
-
-    // --- 1. 异步结算掉落 (不要手动清空 dropItems) ---
-    if (req.EndStatus == BattleEndStatus.BattleEndWin)
+  
+    
+    if (!isBoxing) 
     {
-        // 这里会自动填充 battle.MonsterDropItems 和 RaidRewardItems
-        await Player.DropManager!.ProcessBattleRewards(battle, req);
-
-        if (battle.StaminaCost > 0) await Player.SpendStamina(battle.StaminaCost);
-    }
-    else if (req.EndStatus == BattleEndStatus.BattleEndLose)
-    {
-        minimumHp = 2000;
-        teleportToAnchor = true;
-    }
-    else 
-    {
-        teleportToAnchor = battle.CocoonWave <= 0;
-        updateStatus = false;
-    }
-
-    // --- 2. 更新角色状态 ---
-    if (updateStatus)
-    {
+        // 只有非活动战斗才执行通用的角色血量/能量同步
         var lineup = Player.LineupManager!.GetCurLineup()!;
         foreach (var avatar in req.Stt.BattleAvatarList)
         {
-            // 强制将左侧转为父类，这样 ?? 运算符就能匹配右侧了
-			BaseAvatarInfo? avatarInstance = (BaseAvatarInfo?)Player.AvatarManager!.GetFormalAvatar((int)avatar.Id) ?? 
-                                 Player.AvatarManager!.GetTrialAvatar((int)avatar.Id);
-            
+            BaseAvatarInfo? avatarInstance = (BaseAvatarInfo?)Player.AvatarManager!.GetFormalAvatar((int)avatar.Id) ?? 
+                                             Player.AvatarManager!.GetTrialAvatar((int)avatar.Id);
             if (avatarInstance != null)
             {
                 var prop = avatar.AvatarStatus;
-                var curHp = (int)Math.Max(Math.Round(prop.LeftHp / prop.MaxHp * 10000), minimumHp);
-                var curSp = (int)prop.LeftSp * 100;
-                avatarInstance.SetCurHp(curHp, lineup.LineupType != 0);
-                avatarInstance.SetCurSp(curSp, lineup.LineupType != 0);
+                avatarInstance.SetCurHp((int)Math.Max(Math.Round(prop.LeftHp / prop.MaxHp * 10000), 0), lineup.LineupType != 0);
+                avatarInstance.SetCurSp((int)prop.LeftSp * 100, lineup.LineupType != 0);
             }
         }
         await Player.SendPacket(new PacketSyncLineupNotify(lineup));
     }
 
-    // --- 3. 处理传送逻辑 ---
-    if (teleportToAnchor && Player.BoxingClubManager?.ChallengeInstance == null)
-    {	Console.WriteLine($"[Battle] 开始传送");
-        var anchorProp = Player.SceneInstance?.GetNearestSpring(long.MaxValue);
-        if (anchorProp != null)
-        {
-            var anchor = Player.SceneInstance?.FloorInfo?.GetAnchorInfo(anchorProp.PropInfo.AnchorGroupID, anchorProp.PropInfo.AnchorID);
-            if (anchor != null) await Player.MoveTo(anchor.ToPositionProto());
-        }
-    }
-
-    // --- 4. 【关键：先发结算包】 ---
-    // 先告诉客户端战斗赢了，展示掉落图标
-    Console.WriteLine($"[Battle] 发送战斗结算包 PVEBattleResultScRsp");
+    // --- 3. 结算包处理 ---
+    // 发送基础结算包给客户端
     await Player.SendPacket(new PacketPVEBattleResultScRsp(req, Player, battle));
 
-    // --- 5. 【后触发通关逻辑】 ---
-    // 肉鸽 1004 的通关动画和结算界面应该在战斗包之后
+    // --- 4. 超级联赛特有逻辑拦截 ---
+    if (isBoxing)
+    {
+        // 必须先让活动实例处理结算（发放奖励、更新数据库）
+        await Player.BoxingClubManager!.ChallengeInstance!.OnBattleEnd(req);
+        
+        // 执行完活动逻辑后立即销毁战斗实例并退出，不走下面的传送和大世界刷新逻辑
+        Player.BattleInstance = null;
+        Console.WriteLine("[Battle] 超级联赛活动结算分支完成，已拦截通用退出逻辑。");
+        return; 
+    }
+
+    // --- 5. 通用后续逻辑 (只有非活动战斗才会执行到这里) ---
     battle.OnBattleEnd += Player.MissionManager!.OnBattleFinish;
     await battle.TriggerOnBattleEnd();
 
     if (Player.ActivityManager!.TrialActivityInstance != null && req.EndStatus == BattleEndStatus.BattleEndWin)
         await Player.ActivityManager.TrialActivityInstance.EndActivity(TrialActivityStatus.Finish);
-	// 只需要这一行：把结算丢给实例自己去处理
-	if (Player.BoxingClubManager?.ChallengeInstance != null)
-	{
-    await Player.BoxingClubManager.ChallengeInstance.OnBattleEnd(req);
-	}
-    // 最后才销毁实例
-    Player.BattleInstance = null;
-	// 3. 【重要】拦截大世界刷新
-    // 如果是超级联赛，禁止执行默认的场景通知
-    if (Player.BoxingClubManager?.ChallengeInstance != null) {
-        Console.WriteLine("[Battle] 超级联赛进行中，跳过大世界场景刷新逻辑。");
-        return; 
-    }
 
-    // 只有非活动战斗才跑下面这些
-    Console.WriteLine($"[Battle] <<< 战斗流程彻底结束");
+    Player.BattleInstance = null;
+    Console.WriteLine($"[Battle] 普通战斗流程彻底结束");
 }
 }
