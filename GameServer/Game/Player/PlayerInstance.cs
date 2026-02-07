@@ -471,10 +471,30 @@ public partial class PlayerInstance(PlayerData data)
     }
 
     public async ValueTask SpendStamina(int staminaCost)
+{
+    // 1. 记录扣除前的体力状态
+    int oldStamina = Data.Stamina;
+    Data.Stamina -= staminaCost;
+
+    // 2. 如果体力从满额扣除，需要初始化恢复时间戳
+    // 假设体力上限是 300
+    if (oldStamina >= 300 && Data.Stamina < 300)
     {
-        Data.Stamina -= staminaCost;
-        await SendPacket(new PacketStaminaInfoScNotify(this));
+        // 设置为当前时间 + 6分钟（360秒），单位毫秒
+        // 如果你的逻辑是即刻开始计时，可以直接设为当前时间戳
+        Data.NextStaminaRecover = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + (6 * 60 * 1000);
     }
+    
+    // 3. 内存赋值并立即持久化到数据库
+    // 这样能保证随后的 GetBasicInfoScRsp 读到的是 290 和 正确的恢复时间
+    Database.DatabaseHelper.UpdateInstance(Data);
+
+    // 4. 发送体力更新通知 (58)
+    await SendPacket(new PacketStaminaInfoScNotify(this));
+    
+    // 5. [可选] 同步一次全量数据，确保客户端彻底对齐
+    // await SendPacket(new PacketPlayerSyncScNotify(this)); 
+}
 
     public void OnAddExp()
     {

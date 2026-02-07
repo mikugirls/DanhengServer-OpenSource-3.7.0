@@ -364,7 +364,7 @@ public class BattleManager(PlayerInstance player) : BasePlayerManager(player)
 
 
 
-  public async ValueTask EndBattle(PVEBattleResultCsReq req)
+public async ValueTask EndBattle(PVEBattleResultCsReq req)
 {
     InvokeOnPlayerQuitBattle(Player, req);
 
@@ -377,20 +377,33 @@ public class BattleManager(PlayerInstance player) : BasePlayerManager(player)
 
     battle.BattleEndStatus = req.EndStatus;
     battle.BattleResult = req;
-	bool isBoxing = Player.BoxingClubManager?.ChallengeInstance != null;
-    // --- 1. 掉落结算 ---
-    if (!isBoxing && req.EndStatus == BattleEndStatus.BattleEndWin)
-	{
-    // 只有普通战斗（副本、野怪等）才走这里的通用掉落流程
-    await Player.DropManager!.ProcessBattleRewards(battle, req);
-    if (battle.StaminaCost > 0) await Player.SpendStamina(battle.StaminaCost);
-	}
 
-  
-    
+    // --- 关键修正 1：使用 GameModeType ---
+    var gameMode = Player.SceneInstance?.GameModeType ?? GameModeTypeEnum.Unknown; 
+    bool isBoxing = Player.BoxingClubManager?.ChallengeInstance != null;
+
+    // --- 1. 掉落结算与体力扣除 ---
+    if (req.EndStatus == BattleEndStatus.BattleEndWin)
+    {
+        // 判定逻辑：如果是大世界、副本，或者明确有体力消耗，则扣费
+        if (battle.StaminaCost > 0 || 
+            gameMode == GameModeTypeEnum.Maze || 
+            gameMode == GameModeTypeEnum.FarmRelic || 
+            gameMode == GameModeTypeEnum.Raid)
+        {
+            await Player.DropManager!.ProcessBattleRewards(battle, req);
+           if (battle.StaminaCost > 0) 
+        {
+            await Player.SpendStamina(battle.StaminaCost);
+            // --- 核心修复：扣除后强制触发一次数据库保存，防止后续 GetBasicInfo 读取旧数据 ---
+			
+        }
+        }
+    }
+
+    // --- 2. 状态更新 ---
     if (!isBoxing) 
     {
-        // 只有非活动战斗才执行通用的角色血量/能量同步
         var lineup = Player.LineupManager!.GetCurLineup()!;
         foreach (var avatar in req.Stt.BattleAvatarList)
         {
@@ -406,23 +419,21 @@ public class BattleManager(PlayerInstance player) : BasePlayerManager(player)
         await Player.SendPacket(new PacketSyncLineupNotify(lineup));
     }
 
-    // --- 3. 结算包处理 ---
-    // 发送基础结算包给客户端
+    // --- 3. 基础结算包 ---
     await Player.SendPacket(new PacketPVEBattleResultScRsp(req, Player, battle));
 
-    // --- 4. 超级联赛特有逻辑拦截 ---
-    if (isBoxing)
+    // --- 4. 超级联赛逻辑拦截 ---
+    if (isBoxing && gameMode == GameModeTypeEnum.ChallengeActivity)
     {
-        // 必须先让活动实例处理结算（发放奖励、更新数据库）
+        // 调用活动结算逻辑
         await Player.BoxingClubManager!.ChallengeInstance!.OnBattleEnd(req);
         
-        // 执行完活动逻辑后立即销毁战斗实例并退出，不走下面的传送和大世界刷新逻辑
         Player.BattleInstance = null;
-        Console.WriteLine("[Battle] 超级联赛活动结算分支完成，已拦截通用退出逻辑。");
-        return; 
+        Console.WriteLine("[Battle] 超级联赛活动结算完成，已拦截通用退出逻辑。");
+        return; // 直接返回，防止执行下面的大世界刷新
     }
 
-    // --- 5. 通用后续逻辑 (只有非活动战斗才会执行到这里) ---
+    // --- 5. 通用后续逻辑 ---
     battle.OnBattleEnd += Player.MissionManager!.OnBattleFinish;
     await battle.TriggerOnBattleEnd();
 
@@ -430,6 +441,6 @@ public class BattleManager(PlayerInstance player) : BasePlayerManager(player)
         await Player.ActivityManager.TrialActivityInstance.EndActivity(TrialActivityStatus.Finish);
 
     Player.BattleInstance = null;
-    Console.WriteLine($"[Battle] 普通战斗流程彻底结束");
+    Console.WriteLine($"[Battle] 模式 {gameMode} 流程结束。");
 }
 }
