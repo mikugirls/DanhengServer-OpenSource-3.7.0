@@ -71,8 +71,8 @@ public class MappingInfoExcel : ExcelResource
                 DropItemList.Add(new MappingInfoItem()
                 {
                     ItemID = 2,
-                    MinCount = (50000 + WorldLevel * 100000) * (int)FarmType,
-                    MaxCount = (100000 + WorldLevel * 100000) * (int)FarmType
+                    MinCount = (50000 + WorldLevel * 50000) * (int)FarmType,
+                    MaxCount = (100000 + WorldLevel * 50000) * (int)FarmType
                 });
                 continue;
             }
@@ -215,11 +215,76 @@ case 3: // 行迹材料 (花萼赤)
             Chance = (excel.Rarity == ItemRarityEnum.Rare) ? (WorldLevel * 15) : 100 
         };
         break;
+	case 7: // 普通怪物掉落素材 (例如：工造机杼、永寿幼芽等)
+        // 逻辑：这类材料通常掉落数量较多，且随均衡等级提升
+        int materialMin = 1;
+        int materialMax = 1;
 
+        switch (excel.Rarity)
+        {
+            case ItemRarityEnum.NotNormal: // 绿色品质 (ID: 113011)
+                materialMin = 5 + WorldLevel * 3; // WL1: 8, WL6: 23
+                materialMax = 10 + WorldLevel * 5; // WL1: 15, WL6: 40
+                break;
+            case ItemRarityEnum.Normal: // 蓝色品质
+                materialMin = 1 + (WorldLevel / 2); 
+                materialMax = 3 + WorldLevel;
+                break;
+            case ItemRarityEnum.Rare: // 紫色品质
+                materialMin = WorldLevel >= 3 ? 1 : 0;
+                materialMax = WorldLevel >= 3 ? (WorldLevel - 1) : 0;
+                break;
+            default:
+                materialMin = 1;
+                materialMax = 2;
+                break;
+        }
+
+        // 只有最大数量大于0时才添加掉落
+        if (materialMax > 0)
+        {
+            drop = new MappingInfoItem(excel.ID, 0) 
+            { 
+                Chance = 100, // 基础材料通常设为必掉，由逻辑控制数量
+                MinCount = materialMin,
+                MaxCount = materialMax 
+            };
+        }
+        break;
+		
     case 11: // 遗器合成材料 (残骸)
         drop = new MappingInfoItem(excel.ID, 10) { Chance = 100 };
         break;
+	case 17: // 合成材料 (如：ID 181013 等)
+        // 逻辑：这类材料通常是大世界消耗品合成所需，掉落量波动较大
+        int composeMin = 1;
+        int composeMax = 1;
 
+        switch (excel.Rarity)
+        {
+            case ItemRarityEnum.NotNormal: // 绿色品质
+                // 随均衡等级 (WorldLevel) 提升掉落基数
+                composeMin = 2 + WorldLevel; 
+                composeMax = 5 + (WorldLevel * 2);
+                break;
+            case ItemRarityEnum.Normal: // 蓝色品质
+                composeMin = 1 + (WorldLevel / 3);
+                composeMax = 2 + (WorldLevel / 2);
+                break;
+            default:
+                composeMin = 1;
+                composeMax = 2;
+                break;
+        }
+
+        // 构造掉落条目
+        drop = new MappingInfoItem(excel.ID, 0)
+        {
+            Chance = 100, // 合成材料通常作为副产物 100% 掉落
+            MinCount = composeMin,
+            MaxCount = composeMax
+        };
+        break;
     default:
         drop = new MappingInfoItem(excel.ID, 1) { Chance = 100 };
         break;
