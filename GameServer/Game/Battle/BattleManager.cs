@@ -383,7 +383,14 @@ public async ValueTask EndBattle(PVEBattleResultCsReq req)
     bool isBoxing = Player.BoxingClubManager?.ChallengeInstance != null;
 
     // --- 1. 掉落结算与体力扣除 ---
-    if (req.EndStatus == BattleEndStatus.BattleEndWin)
+	if (req.EndStatus == BattleEndStatus.BattleEndWin)
+	{
+    // 如果是超级联赛，坚决不走通用掉落链路
+    if (isBoxing || gameMode == GameModeTypeEnum.ChallengeActivity)
+    {
+        Console.WriteLine($"[Battle-Debug] 检测到超级联赛模式，跳过通用掉落与体力扣除。StageId: {req.StageId}");
+    }
+    else 
     {
         // 判定逻辑：如果是大世界、副本，或者明确有体力消耗，则扣费
         if (battle.StaminaCost > 0 || 
@@ -391,36 +398,50 @@ public async ValueTask EndBattle(PVEBattleResultCsReq req)
             gameMode == GameModeTypeEnum.FarmRelic || 
             gameMode == GameModeTypeEnum.Raid)
         {
+            Console.WriteLine($"[Battle-Debug] 执行通用结算: Mode={gameMode}, Cost={battle.StaminaCost}");
+            
             await Player.DropManager!.ProcessBattleRewards(battle, req);
-           if (battle.StaminaCost > 0) 
-        {
-            await Player.SpendStamina(battle.StaminaCost);
-            // --- 核心修复：扣除后强制触发一次数据库保存，防止后续 GetBasicInfo 读取旧数据 ---
-			
-        }
-        }
-    }
-
-    // --- 2. 状态更新 ---
-    if (!isBoxing) 
-    {
-        var lineup = Player.LineupManager!.GetCurLineup()!;
-        foreach (var avatar in req.Stt.BattleAvatarList)
-        {
-            BaseAvatarInfo? avatarInstance = (BaseAvatarInfo?)Player.AvatarManager!.GetFormalAvatar((int)avatar.Id) ?? 
-                                             Player.AvatarManager!.GetTrialAvatar((int)avatar.Id);
-            if (avatarInstance != null)
+            
+            if (battle.StaminaCost > 0) 
             {
-                var prop = avatar.AvatarStatus;
-                avatarInstance.SetCurHp((int)Math.Max(Math.Round(prop.LeftHp / prop.MaxHp * 10000), 0), lineup.LineupType != 0);
-                avatarInstance.SetCurSp((int)prop.LeftSp * 100, lineup.LineupType != 0);
+                await Player.SpendStamina(battle.StaminaCost);
+                // 强制保存防止回滚
+                Database.DatabaseHelper.UpdateInstance(Player.Data);
             }
         }
-        await Player.SendPacket(new PacketSyncLineupNotify(lineup));
+    }
+	}
+
+   // --- 2. 状态更新 ---
+    // 只有在非活动模式（如 Town, Maze, FarmRelic, Raid）下才同步角色血量和能量
+    // 避免挑战活动（ChallengeActivity）中的临时状态覆盖大世界角色数据
+    if (gameMode != GameModeTypeEnum.ChallengeActivity && !isBoxing) 
+    {
+        var lineup = Player.LineupManager!.GetCurLineup()!;
+        if (lineup != null)
+        {
+            foreach (var avatar in req.Stt.BattleAvatarList)
+            {
+                BaseAvatarInfo? avatarInstance = (BaseAvatarInfo?)Player.AvatarManager!.GetFormalAvatar((int)avatar.Id) ?? 
+                                                 Player.AvatarManager!.GetTrialAvatar((int)avatar.Id);
+                if (avatarInstance != null)
+                {
+                    var prop = avatar.AvatarStatus;
+                    // 同步血量（万分比）和能量（100倍）
+                    avatarInstance.SetCurHp((int)Math.Max(Math.Round(prop.LeftHp / prop.MaxHp * 10000), 0), lineup.LineupType != 0);
+                    avatarInstance.SetCurSp((int)prop.LeftSp * 100, lineup.LineupType != 0);
+                }
+            }
+            await Player.SendPacket(new PacketSyncLineupNotify(lineup));
+            Console.WriteLine($"[Battle-Debug] 已同步大世界角色状态: Mode={gameMode}");
+        }
+    }
+    else
+    {
+        Console.WriteLine($"[Battle-Debug] 检测到挑战模式，跳过大世界角色状态更新，保持原始状态。");
     }
 
-    // --- 3. 基础结算包 ---
-    await Player.SendPacket(new PacketPVEBattleResultScRsp(req, Player, battle));
+  
 
     // --- 4. 超级联赛逻辑拦截 ---
     if (isBoxing && gameMode == GameModeTypeEnum.ChallengeActivity)
@@ -430,9 +451,12 @@ public async ValueTask EndBattle(PVEBattleResultCsReq req)
         
         Player.BattleInstance = null;
         Console.WriteLine("[Battle] 超级联赛活动结算完成，已拦截通用退出逻辑。");
-        return; // 直接返回，防止执行下面的大世界刷新
+        //return; // 直接返回，防止执行下面的大世界刷新
     }
-
+	  // --- 3. 基础结算包 ---
+	Console.WriteLine($"[Battle] 普通战斗，发送 PVEBattleResultScRsp(123)");
+    await Player.SendPacket(new PacketPVEBattleResultScRsp(req, Player, battle));
+	
     // --- 5. 通用后续逻辑 ---
     battle.OnBattleEnd += Player.MissionManager!.OnBattleFinish;
     await battle.TriggerOnBattleEnd();

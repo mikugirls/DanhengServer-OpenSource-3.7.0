@@ -63,7 +63,11 @@ public class BoxingClubInstance(PlayerInstance player, uint challengeId, List<ui
             _log.Error($"[Boxing] 找不到 Stage 配置: {actualStageId}");
             return;
         }
-
+		if (Player.SceneInstance != null)
+		{
+        Player.SceneInstance.GameModeType = EggLink.DanhengServer.Enums.Scene.GameModeTypeEnum.ChallengeActivity;
+        _log.Info($"[Boxing] 已将场景模式切换为: {Player.SceneInstance.GameModeType}");
+		}
         // 1. 构造详细阵容信息 (兼容试用与正式角色)
         var boxingLineup = new List<LineupAvatarInfo>();
         foreach (var id in SelectedAvatars)
@@ -308,11 +312,26 @@ private async ValueTask HandleBattleWin()
             }));
         }
 
-        // 清理 Slot 19
-        //await (Player.LineupManager?.SetExtraLineup(ExtraLineupType.LineupNone) ?? ValueTask.CompletedTask);
+      // A. 将场景模式切回 Town，否则后续副本战斗会被误判为活动
+        if (Player.SceneInstance != null)
+        {
+            Player.SceneInstance.GameModeType = EggLink.DanhengServer.Enums.Scene.GameModeTypeEnum.Town;
+            _log.Info($"[Boxing] 模式重置：场景 GameModeType 已切回 Town。");
+        }
+
+        // B. 清理 Slot 19 (活动阵容)，让大世界恢复使用常规 Lineup
+        if (Player.LineupManager != null)
+        {
+            await Player.LineupManager.SetExtraLineup(ExtraLineupType.LineupNone);
+            Player.SceneInstance?.SyncLineup(); // 强制刷新大世界模型
+            _log.Info($"[Boxing] 阵容清理：已移除活动编队，恢复常规编队。");
+        }
         
-       // if (Player.BoxingClubManager != null)
-       //     Player.BoxingClubManager.ChallengeInstance = null;
+        // C. 销毁活动实例
+        if (Player.BoxingClubManager != null)
+            Player.BoxingClubManager.ChallengeInstance = null;
+
+        _log.Info($"[Boxing] 挑战 {this.ChallengeId} 结算完成，环境已彻底清理。");
 
         _log.Info($"[Boxing] 挑战 {this.ChallengeId} 结算完成并已清理。");
     }
