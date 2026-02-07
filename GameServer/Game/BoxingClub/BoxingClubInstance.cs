@@ -57,6 +57,7 @@ public class BoxingClubInstance(PlayerInstance player, uint challengeId, List<ui
 		{
 		_log.Warn($"[Boxing] 未找到 EventID {this.CurrentMatchEventId} 的 Buff 配置。");
 		}
+		
         int actualStageId = (int)(CurrentMatchEventId * 10) + Player.Data.WorldLevel;
         if (!Data.GameData.StageConfigData.TryGetValue(actualStageId, out var stageConfig)) 
         {

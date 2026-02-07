@@ -200,7 +200,20 @@ public class BoxingClubManager(PlayerInstance player) : BasePlayerManager(player
     // 这样稍后 EnterBoxingClubStage 调用时，拿到的才是这次匹配出来的怪
     ChallengeInstance.CurrentStageGroupId = currentGroupId;
     ChallengeInstance.CurrentMatchEventId = targetEventId;
-
+	// --- 【新增：Season 1 自动 Buff 注入】 ---
+    // 如果是 Season 1 (ID 1-5)，在匹配到怪物时，直接把配置里的 Buff 塞进 SelectedBuffs
+    if (reqId < 6 && targetEventId != 0)
+    {
+        if (Data.GameData.BoxingClubStageData.TryGetValue((int)targetEventId, out var stageConfig))
+        {
+            if (stageConfig.BuffID != 0)
+            {
+                ChallengeInstance.SelectedBuffs.Clear(); // Season 1 每次匹配覆盖之前的 Buff
+                ChallengeInstance.SelectedBuffs.Add((uint)stageConfig.BuffID);
+                _log.Info($"[Match] Season 1 自动关联 Buff: {stageConfig.BuffID}");
+            }
+        }
+    }
     return ConstructSnapshot(ChallengeInstance);
 }
 
@@ -210,15 +223,18 @@ public FCIHIJLOMGA ConstructSnapshot(BoxingClubInstance inst)
     Database.BoxingClub.BoxingClubInfo? dbInfo = null;
     Player.BoxingClubData?.Challenges.TryGetValue((int)inst.ChallengeId, out dbInfo);
 	// 【核心修正逻辑】
-    uint resonanceIdToSync = 1; // 默认值（Season 1）
+	uint resonanceIdToSync;
     if (inst.ChallengeId >= 6)
     {
-        // 如果是 Season 2，LLFOFPNDAFG 必须传当前生效的共鸣 ID
-        // 优先取最近一次选中的 Buff
+        // Season 2：维持你的选择逻辑，不动它
         resonanceIdToSync = inst.SelectedBuffs.LastOrDefault();
-        
-        // 如果还没有选过 Buff（初始状态），可以给 0 或根据配置给个默认值
-        if (resonanceIdToSync == 0) resonanceIdToSync = 0; 
+    }
+    else
+    {
+        // Season 1：直接取我们刚刚在 ProcessMatchRequest 里注入的那个自动 Buff
+        // 如果没有注入，则回退到 ChallengeId
+        resonanceIdToSync = inst.SelectedBuffs.LastOrDefault();
+        if (resonanceIdToSync == 0) resonanceIdToSync = inst.ChallengeId;
     }
     var snapshot = new FCIHIJLOMGA 
     {
