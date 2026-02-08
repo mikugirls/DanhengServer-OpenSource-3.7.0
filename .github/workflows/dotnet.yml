@@ -9,10 +9,10 @@ permissions:
 
 on:
   push:
-    branches: [ "master" ]
+    branches: [ "clubfight" ]
     paths: [ "**.cs" ]
   pull_request:
-    branches: [ "master" ]
+    branches: [ "clubfight" ]
     paths: [ "**.cs" ]
   workflow_dispatch:
   
