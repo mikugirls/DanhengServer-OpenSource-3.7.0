@@ -17,8 +17,8 @@ public class BattleBoxingClubOptions(List<uint> selectedBuffs, PlayerInstance pl
     public uint EventId { get; set; } = eventId; // 保存传入的 EventID
 	public void HandleProto(SceneBattleInfo proto, BattleInstance battle)
 {
-    // 1. 【核心修复】注入 BattleEventInfo 启动关卡监听引擎
-    // 字段名为 BattleEvent，类型为 BattleEventBattleInfo
+    // 1. 【修复 EVENTID】启动超级联赛的关卡监听引擎
+    // 对应 proto 中的 battle_event 字段，其 C# 属性名为 BattleEvent
     if (this.EventId != 0)
     {
         proto.BattleEvent.Add(new BattleEventBattleInfo 
@@ -27,40 +27,38 @@ public class BattleBoxingClubOptions(List<uint> selectedBuffs, PlayerInstance pl
         });
     }
 
-    // 2. 注入关卡全局 ChallengeBuff (来自 BoxingClubChallenge.json)
-    if (Data.GameData.BoxingClubChallengeData.TryGetValue((int)battle.ChallengeId, out var challengeConfig))
-    {
-        if (challengeConfig.ChallengeBuff != 0)
-        {
-            proto.BuffList.Add(new BattleBuff 
-            { 
-                Id = (uint)challengeConfig.ChallengeBuff, 
-                Level = 1, 
-                OwnerIndex = 0xFFFFFFFF, 
-                WaveFlag = 0xFFFFFFFF 
-            });
-        }
-    }
-
-    // 3. 注入玩家选中的自选 BUFF 及其内核 ExtraEffectID
+    // 2. 注入玩家选中的 BUFF (UI 显示 + 内核递归)
     foreach (var buffId in SelectedBuffs)
     {
-        // 注入 UI Buff
-        proto.BuffList.Add(new BattleBuff { Id = buffId, Level = 1, OwnerIndex = 0xFFFFFFFF, WaveFlag = 0xFFFFFFFF });
+        // 注入 UI 壳子 ID
+        var mainBuff = new BattleBuff 
+        { 
+            Id = buffId, 
+            Level = 1, 
+            OwnerIndex = 0xFFFFFFFF, 
+            WaveFlag = 0xFFFFFFFF 
+        };
+        proto.BuffList.Add(mainBuff);
 
-        // 【核心修复】查表注入关联的机制 ID (对应 BoxingBreakBuffSelectConfig.json)
-        // 注意：由于你的 GameData 报错，这里使用 BoxingClubStageData 作为备选，
-        // 或者请确保 BoxingBreakBuffSelectData 已经在 GameData 中加载。
+        // 【内核关联修复】根据 BoxingBreakBuffSelectConfig 注入 ExtraEffectID (7000xxxx 系列)
+        // 注意：请确保 GameData.BoxingBreakBuffSelectData 已在 GameData.cs 中定义并加载
         if (Data.GameData.BoxingBreakBuffSelectData.TryGetValue((int)buffId, out var selectConfig))
         {
             foreach (var extraId in selectConfig.ExtraEffectIDList)
             {
-                proto.BuffList.Add(new BattleBuff { Id = (uint)extraId, Level = 1, OwnerIndex = 0xFFFFFFFF, WaveFlag = 0xFFFFFFFF });
+                proto.BuffList.Add(new BattleBuff 
+                { 
+                    Id = (uint)extraId, 
+                    Level = 1, 
+                    OwnerIndex = 0xFFFFFFFF, 
+                    WaveFlag = 0xFFFFFFFF 
+                });
             }
         }
     }
 
-    // 4. 统一注入动态值开关 Value1 = 1.0f 激活脚本判定
+    // 3. 【激活逻辑】为所有注入的 Buff 补全动态数值开关
+    // 许多 LevelAbility 脚本检查的是 Value1 是否为 1.0f
     foreach (var buff in proto.BuffList)
     {
         if (!buff.DynamicValues.ContainsKey("Value1"))
@@ -68,6 +66,6 @@ public class BattleBoxingClubOptions(List<uint> selectedBuffs, PlayerInstance pl
             buff.DynamicValues.Add("Value1", 1.0f);
         }
     }
-	}
+}
     
 }
