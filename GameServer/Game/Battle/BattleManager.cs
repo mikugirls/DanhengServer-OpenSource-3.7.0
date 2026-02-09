@@ -394,9 +394,7 @@ public async ValueTask EndBattle(PVEBattleResultCsReq req)
     {
         // 判定逻辑：如果是大世界、副本，或者明确有体力消耗，则扣费
         if (battle.StaminaCost > 0 || 
-            gameMode == GameModeTypeEnum.Maze || 
-            gameMode == GameModeTypeEnum.FarmRelic || 
-            gameMode == GameModeTypeEnum.Raid)
+            gameMode != GameModeTypeEnum.ChallengeActivity)
         {
             Console.WriteLine($"[Battle-Debug] 执行通用结算: Mode={gameMode}, Cost={battle.StaminaCost}");
             
@@ -451,7 +449,7 @@ public async ValueTask EndBattle(PVEBattleResultCsReq req)
         
         Player.BattleInstance = null;
         Console.WriteLine("[Battle] 超级联赛活动结算完成，已拦截通用退出逻辑。");
-        //return; // 直接返回，防止执行下面的大世界刷新
+        
     }
 	  // --- 3. 基础结算包 ---
 	Console.WriteLine($"[Battle] 普通战斗，发送 PVEBattleResultScRsp(123)");
