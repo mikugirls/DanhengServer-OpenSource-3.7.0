@@ -7,6 +7,7 @@ using EggLink.DanhengServer.Util; // 引用 GlobalDebug
 // 在 ShopService.cs 顶部添加
 using EggLink.DanhengServer.GameServer.Server.Packet.Send.Shop;
 using EggLink.DanhengServer.Database; // 添加这一行
+using EggLink.DanhengServer.Proto;
 namespace EggLink.DanhengServer.GameServer.Game.Shop;
 
 public class ShopService(PlayerInstance player) : BasePlayerManager(player)
@@ -174,25 +175,35 @@ public class ShopService(PlayerInstance player) : BasePlayerManager(player)
         return level;
     }
     // 在 ShopService.cs 的领奖逻辑中
-public async Task<TakeCityShopRewardScRsp> TakeCityShopReward(uint shopId, uint level)
+	public async Task<TakeCityShopRewardScRsp> TakeCityShopReward(uint shopId, uint level)
 {
-    var rsp = new TakeCityShopRewardScRsp { ShopId = shopId, Level = level, Retcode = (uint)Retcode.RetSucc };
+    var rsp = new TakeCityShopRewardScRsp { 
+        ShopId = shopId, 
+        Level = level, 
+        Retcode = (uint)Retcode.RetSucc 
+    };
 
+    // 1. 校验等级
     uint currentLevel = CalculateCityLevel((int)shopId);
-    if (level > currentLevel)
-    {
-        rsp.Retcode = (uint)Retcode.RetCityLevelNotMeet; // 使用 2705
+    if (level > currentLevel) {
+        rsp.Retcode = (uint)Retcode.RetCityLevelNotMeet;
         return rsp;
     }
 
-    if (Player.CityShopData!.IsRewardTaken((int)shopId, level))
-    {
-        rsp.Retcode = (uint)Retcode.RetCityLevelRewardTaken; // 使用 2704
+    // 2. 校验是否已领取
+    if (Player.CityShopData!.IsRewardTaken((int)shopId, level)) {
+        rsp.Retcode = (uint)Retcode.RetCityLevelRewardTaken;
         return rsp;
     }
 
-    // ... 发奖逻辑 ...
+    // --- TODO: 等待配置文件上传后，实现根据 RewardID 发放物品的逻辑 ---
+    // 代码位置预留：此处将调用 InventoryManager.AddReward
+    
+    // 暂时仅记录已领取状态，保证流程能跑通
+    Player.CityShopData.MarkRewardTaken((int)shopId, level);
+    DatabaseHelper.ToSaveUidList.SafeAdd(Player.Uid);
+
     return rsp;
 }
-    
+	    
 }
