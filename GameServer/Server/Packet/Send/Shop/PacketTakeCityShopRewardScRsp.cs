@@ -1,5 +1,5 @@
 using EggLink.DanhengServer.Proto;
-
+using EggLink.DanhengServer.Kcp; // 必须引用这个命名空间来找到 BasePacket
 namespace EggLink.DanhengServer.GameServer.Server.Packet.Send.Shop;
 
 public class PacketTakeCityShopRewardScRsp : BasePacket
