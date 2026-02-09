@@ -173,5 +173,26 @@ public class ShopService(PlayerInstance player) : BasePlayerManager(player)
         }
         return level;
     }
+    // 在 ShopService.cs 的领奖逻辑中
+public async Task<TakeCityShopRewardScRsp> TakeCityShopReward(uint shopId, uint level)
+{
+    var rsp = new TakeCityShopRewardScRsp { ShopId = shopId, Level = level, Retcode = (uint)Retcode.RetSucc };
+
+    uint currentLevel = CalculateCityLevel((int)shopId);
+    if (level > currentLevel)
+    {
+        rsp.Retcode = (uint)Retcode.RetCityLevelNotMeet; // 使用 2705
+        return rsp;
+    }
+
+    if (Player.CityShopData!.IsRewardTaken((int)shopId, level))
+    {
+        rsp.Retcode = (uint)Retcode.RetCityLevelRewardTaken; // 使用 2704
+        return rsp;
+    }
+
+    // ... 发奖逻辑 ...
+    return rsp;
+}
     
 }
