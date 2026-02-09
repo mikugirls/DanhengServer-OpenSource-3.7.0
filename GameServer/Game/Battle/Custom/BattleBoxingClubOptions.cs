@@ -26,5 +26,10 @@ public class BattleBoxingClubOptions(List<uint> selectedBuffs, PlayerInstance pl
                 OwnerIndex = 0xFFFFFFFF 
             });
         }
+        // 3. 注入动态值开关
+    	// 很多监听器逻辑需要 Value1 = 1.0f 才能激活 OnListenCharacterCreate
+    	foreach (var buff in proto.BuffList) {
+        buff.DynamicValues.Add("Value1", 1.0f);
+    	}
     }
 }
