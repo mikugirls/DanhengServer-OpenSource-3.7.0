@@ -7,6 +7,7 @@ using EggLink.DanhengServer.Util; // 引用 GlobalDebug
 // 在 ShopService.cs 顶部添加
 using EggLink.DanhengServer.GameServer.Server.Packet.Send.Shop;
 using EggLink.DanhengServer.Database; // 添加这一行
+using EggLink.DanhengServer.Proto;
 namespace EggLink.DanhengServer.GameServer.Game.Shop;
 
 public class ShopService(PlayerInstance player) : BasePlayerManager(player)
@@ -173,5 +174,72 @@ public class ShopService(PlayerInstance player) : BasePlayerManager(player)
         }
         return level;
     }
-    
+    public async Task<TakeCityShopRewardScRsp> TakeCityShopReward(uint shopId, uint level)
+{
+    var rsp = new TakeCityShopRewardScRsp 
+    { 
+        ShopId = shopId, 
+        Level = level, 
+        Retcode = (uint)Retcode.RetSucc,
+        Reward = new ItemList() 
+    };
+
+    // 1. 等级校验
+    uint currentLevel = CalculateCityLevel((int)shopId);
+    if (level > currentLevel) 
+    {
+        rsp.Retcode = (uint)Retcode.RetCityLevelNotMeet;
+        return rsp;
+    }
+
+    // 2. 重复领取校验
+    if (Player.CityShopData!.IsRewardTaken((int)shopId, level)) 
+    {
+        rsp.Retcode = (uint)Retcode.RetCityLevelRewardTaken;
+        return rsp;
+    }
+
+    // 3. 执行发奖：利用你定义的复合主键 (GroupID << 16 | Level)
+    if (GameData.CityShopConfigData.TryGetValue((int)shopId, out var config))
+    {
+        // 直接构造主键：GroupID 是高 16 位，Level 是低 16 位
+        int compositeKey = (config.RewardListGroupID << 16) | (int)level;
+
+        // O(1) 效率查找，不再遍历
+        if (GameData.CityShopRewardListData.TryGetValue(compositeKey, out var rewardEntry))
+        {
+            if (rewardEntry.RewardID > 0)
+            {
+                // 调用你的 HandleReward 方法
+                var items = await Player.InventoryManager!.HandleReward(rewardEntry.RewardID, notify: false, sync: true);
+
+                // 将 ItemData 转换为 Proto 的 Item 对象
+                if (items != null)
+                {
+                    foreach (var item in items)
+                    {
+                        rsp.Reward.ItemList_.Add(new Item
+                        {
+                            ItemId = (uint)item.ItemId,
+                            Num = (uint)item.Count
+                        });
+                    }
+                }
+            }
+        }
+        else
+        {
+            // 如果表里没这行配置
+            if (Util.GlobalDebug.EnableVerboseLog)
+                Console.WriteLine($"[SHOP_ERROR] 未找到城市商店配置。Key: {compositeKey} | ShopID: {shopId} | Level: {level}");
+        }
+    }
+
+    // 4. 更新数据库状态
+    Player.CityShopData.MarkRewardTaken((int)shopId, level);
+    Database.DatabaseHelper.ToSaveUidList.SafeAdd(Player.Uid);
+
+    return rsp;
+}
+	    
 }

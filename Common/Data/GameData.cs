@@ -48,6 +48,7 @@ public static class GameData
 	public static Dictionary<int, BoxingClubChallengeExcel> BoxingClubChallengeData { get; private set; } = [];
 	public static Dictionary<int, BoxingClubStageGroupExcel> BoxingClubStageGroupData { get; private set; } = [];
 	public static Dictionary<int, BoxingClubStageExcel> BoxingClubStageData { get; private set; } = [];
+	public static Dictionary<int, BoxingBreakBuffSelectExcel> BoxingBreakBuffSelectData { get; private set; } = [];
     #region Marble
 
     public static Dictionary<int, MarbleMatchInfoExcel> MarbleMatchInfoData { get; private set; } = [];

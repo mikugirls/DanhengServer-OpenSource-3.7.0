@@ -116,7 +116,7 @@ public class BoxingClubInstance(PlayerInstance player, uint challengeId, List<ui
             WorldLevel = Player.Data.WorldLevel,
             EventId = (int)CurrentMatchEventId,
             RoundLimit = config.ChallengeTurnLimit,
-            BoxingClubOptions = new BattleBoxingClubOptions(SelectedBuffs.ToList(), Player)
+            BoxingClubOptions = new BattleBoxingClubOptions(SelectedBuffs.ToList(), Player, CurrentMatchEventId)
         };
 
         Player.BattleInstance = battleInstance;
