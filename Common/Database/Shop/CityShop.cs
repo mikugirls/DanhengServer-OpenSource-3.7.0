@@ -54,4 +54,15 @@ public class CityShopData : BaseDatabaseDataHelper
         mask |= (1UL << (int)(level - 1));
         CityShopRewardMaskMap[shopId] = mask;
     }
+    /// <summary>
+    /// 检查指定等级的奖励是否已领 (配合 MarkRewardTaken 使用)
+    /// </summary>
+    public bool IsRewardTaken(int shopId, uint level)
+    {
+        if (level == 0 || level > 64) return true; // 越界处理
+        
+        ulong mask = GetRewardMask(shopId);
+        // 检查掩码的第 (level-1) 位是否为 1
+        return (mask & (1UL << (int)(level - 1))) != 0;
+    }
 }
