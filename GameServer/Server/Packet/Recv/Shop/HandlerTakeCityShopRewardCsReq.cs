@@ -13,14 +13,20 @@ public class HandlerTakeCityShopRewardCsReq : Handler
         var player = connection.Player;
         if (player == null) return;
 
-        // 核心逻辑全部交给 ShopService 处理
-        var rsp = await player.ShopService!.TakeCityShopReward(req.ShopId, req.Level);
+        // 1. 调用 Service 层逻辑
+        var rspData = await player.ShopService!.TakeCityShopReward(req.ShopId, req.Level);
         
-        // 发送 1586 响应包
-        await connection.SendPacket(CmdIds.TakeCityShopRewardScRsp, rsp);
+        // 2. 直接发送刚才写好的 Packet
+        // 这里的 rspData 包含从 ShopService 返回的 retcode, level, shopId, reward
+        await connection.SendPacket(new PacketTakeCityShopRewardScRsp(
+            rspData.Retcode, 
+            rspData.Level, 
+            rspData.ShopId, 
+            rspData.Reward
+        ));
 
-        // 如果领取成功，发送 1594 同步包刷新 UI 状态（按钮变灰）
-        if (rsp.Retcode == 0)
+        // 3. 如果成功，别忘了同步商店状态
+        if (rspData.Retcode == (uint)Retcode.RetSucc)
         {
             await player.SendPacket(new PacketCityShopInfoScNotify(player, (int)req.ShopId));
         }
