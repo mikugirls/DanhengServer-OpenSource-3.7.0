@@ -174,34 +174,67 @@ public class ShopService(PlayerInstance player) : BasePlayerManager(player)
         }
         return level;
     }
-    // 在 ShopService.cs 的领奖逻辑中
-	public async Task<TakeCityShopRewardScRsp> TakeCityShopReward(uint shopId, uint level)
+  	public async Task<TakeCityShopRewardScRsp> TakeCityShopReward(uint shopId, uint level)
 {
-    var rsp = new TakeCityShopRewardScRsp { 
+    var rsp = new TakeCityShopRewardScRsp 
+    { 
         ShopId = shopId, 
         Level = level, 
-        Retcode = (uint)Retcode.RetSucc 
+        Retcode = (uint)Retcode.RetSucc, // 使用枚举 0
+        Reward = new ItemList() 
     };
 
-    // 1. 校验等级
+    // 1. 等级校验
     uint currentLevel = CalculateCityLevel((int)shopId);
-    if (level > currentLevel) {
-        rsp.Retcode = (uint)Retcode.RetCityLevelNotMeet;
+    if (level > currentLevel) 
+    {
+        rsp.Retcode = (uint)Retcode.RetCityLevelNotMeet; // 使用枚举 2705
         return rsp;
     }
 
-    // 2. 校验是否已领取
-    if (Player.CityShopData!.IsRewardTaken((int)shopId, level)) {
-        rsp.Retcode = (uint)Retcode.RetCityLevelRewardTaken;
+    // 2. 重复领取校验
+    if (Player.CityShopData!.IsRewardTaken((int)shopId, level)) 
+    {
+        rsp.Retcode = (uint)Retcode.RetCityLevelRewardTaken; // 使用枚举 2704
         return rsp;
     }
 
-    // --- TODO: 等待配置文件上传后，实现根据 RewardID 发放物品的逻辑 ---
-    // 代码位置预留：此处将调用 InventoryManager.AddReward
-    
-    // 暂时仅记录已领取状态，保证流程能跑通
+    // 3. 执行发奖：使用 HandleReward 逻辑
+    if (GameData.CityShopConfigData.TryGetValue((int)shopId, out var config))
+    {
+        // 根据 GroupID 和 Level 查找配置
+        var rewardEntry = GameData.CityShopRewardListData.Values
+            .FirstOrDefault(x => x.GroupID == config.RewardListGroupID && (uint)x.Level == level);
+
+        if (rewardEntry != null && rewardEntry.RewardID > 0)
+        {
+            // 调用你提供的 HandleReward 方法 (同步背包，但不在此处弹窗)
+            var items = await Player.InventoryManager!.HandleReward(rewardEntry.RewardID, notify: false, sync: true);
+
+            // 将获得的物品映射到 Protobuf 的 ItemList 中
+            if (items != null)
+            {
+                foreach (var item in items)
+                {
+                    rsp.Reward.ItemList_.Add(new Item
+                    {
+                        ItemId = (uint)item.ItemId,
+                        Num = (uint)item.Count
+                    });
+                }
+            }
+        }
+        else
+        {
+            // 如果等级 1 或特殊等级没有配置奖励 ID
+            if (Util.GlobalDebug.EnableVerboseLog)
+                Console.WriteLine($"[SHOP_DEBUG] 商店 {shopId} 等级 {level} 无效奖励配置，跳过发奖。");
+        }
+    }
+
+    // 4. 更新数据库状态
     Player.CityShopData.MarkRewardTaken((int)shopId, level);
-    DatabaseHelper.ToSaveUidList.SafeAdd(Player.Uid);
+    Database.DatabaseHelper.ToSaveUidList.SafeAdd(Player.Uid);
 
     return rsp;
 }
