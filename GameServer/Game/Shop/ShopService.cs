@@ -174,13 +174,13 @@ public class ShopService(PlayerInstance player) : BasePlayerManager(player)
         }
         return level;
     }
-  	public async Task<TakeCityShopRewardScRsp> TakeCityShopReward(uint shopId, uint level)
+    public async Task<TakeCityShopRewardScRsp> TakeCityShopReward(uint shopId, uint level)
 {
     var rsp = new TakeCityShopRewardScRsp 
     { 
         ShopId = shopId, 
         Level = level, 
-        Retcode = (uint)Retcode.RetSucc, // 使用枚举 0
+        Retcode = (uint)Retcode.RetSucc,
         Reward = new ItemList() 
     };
 
@@ -188,47 +188,50 @@ public class ShopService(PlayerInstance player) : BasePlayerManager(player)
     uint currentLevel = CalculateCityLevel((int)shopId);
     if (level > currentLevel) 
     {
-        rsp.Retcode = (uint)Retcode.RetCityLevelNotMeet; // 使用枚举 2705
+        rsp.Retcode = (uint)Retcode.RetCityLevelNotMeet;
         return rsp;
     }
 
     // 2. 重复领取校验
     if (Player.CityShopData!.IsRewardTaken((int)shopId, level)) 
     {
-        rsp.Retcode = (uint)Retcode.RetCityLevelRewardTaken; // 使用枚举 2704
+        rsp.Retcode = (uint)Retcode.RetCityLevelRewardTaken;
         return rsp;
     }
 
-    // 3. 执行发奖：使用 HandleReward 逻辑
+    // 3. 执行发奖：利用你定义的复合主键 (GroupID << 16 | Level)
     if (GameData.CityShopConfigData.TryGetValue((int)shopId, out var config))
     {
-        // 根据 GroupID 和 Level 查找配置
-        var rewardEntry = GameData.CityShopRewardListData.Values
-            .FirstOrDefault(x => x.GroupID == config.RewardListGroupID && (uint)x.Level == level);
+        // 直接构造主键：GroupID 是高 16 位，Level 是低 16 位
+        int compositeKey = (config.RewardListGroupID << 16) | (int)level;
 
-        if (rewardEntry != null && rewardEntry.RewardID > 0)
+        // O(1) 效率查找，不再遍历
+        if (GameData.CityShopRewardListData.TryGetValue(compositeKey, out var rewardEntry))
         {
-            // 调用你提供的 HandleReward 方法 (同步背包，但不在此处弹窗)
-            var items = await Player.InventoryManager!.HandleReward(rewardEntry.RewardID, notify: false, sync: true);
-
-            // 将获得的物品映射到 Protobuf 的 ItemList 中
-            if (items != null)
+            if (rewardEntry.RewardID > 0)
             {
-                foreach (var item in items)
+                // 调用你的 HandleReward 方法
+                var items = await Player.InventoryManager!.HandleReward(rewardEntry.RewardID, notify: false, sync: true);
+
+                // 将 ItemData 转换为 Proto 的 Item 对象
+                if (items != null)
                 {
-                    rsp.Reward.ItemList_.Add(new Item
+                    foreach (var item in items)
                     {
-                        ItemId = (uint)item.ItemId,
-                        Num = (uint)item.Count
-                    });
+                        rsp.Reward.ItemList_.Add(new Item
+                        {
+                            ItemId = (uint)item.ItemId,
+                            Num = (uint)item.Count
+                        });
+                    }
                 }
             }
         }
         else
         {
-            // 如果等级 1 或特殊等级没有配置奖励 ID
+            // 如果表里没这行配置
             if (Util.GlobalDebug.EnableVerboseLog)
-                Console.WriteLine($"[SHOP_DEBUG] 商店 {shopId} 等级 {level} 无效奖励配置，跳过发奖。");
+                Console.WriteLine($"[SHOP_ERROR] 未找到城市商店配置。Key: {compositeKey} | ShopID: {shopId} | Level: {level}");
         }
     }
 
