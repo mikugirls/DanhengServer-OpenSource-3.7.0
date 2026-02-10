@@ -1,5 +1,5 @@
 using EggLink.DanhengServer.GameServer.Game.Player;
-
+using System.Threading.Tasks; // 必须添加这个
 namespace EggLink.DanhengServer.GameServer.Game.FightActivity;
 
 public class FightActivityInstance
