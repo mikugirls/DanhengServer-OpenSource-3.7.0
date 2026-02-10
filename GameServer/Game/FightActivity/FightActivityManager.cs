@@ -25,35 +25,44 @@ public class FightActivityManager(PlayerInstance player) : BasePlayerManager(pla
     /// 获取活动进度快照 (用于同步 GetFightActivityDataScRsp 或 DataChangeScNotify)
     /// </summary>
     /// <returns>返回经过协议包装的关卡列表</returns>
+    /// <summary>
+    /// 获取活动全局进度快照
+    /// 核心逻辑：合并数据库进度与配置表中的试用角色 (SpecialAvatarID)
+    /// </summary>
     public List<ICLFKKNFDME> GetFightActivityStageData() 
     {
         var list = new List<ICLFKKNFDME>();
         
-        // 1. 获取该玩家在数据库中的持久化进度存档
-        // 若玩家首次参加活动，DatabaseHelper 会自动创建新的字典实例
+        // 1. 获取数据库中的持久化数据 (使用你定义的 FightActivityData)
         var dbData = DatabaseHelper.Instance!.GetInstanceOrCreateNew<FightActivityData>(this.Player.Uid);
 
-        // 2. 遍历 Excel 配置表中的所有关卡组 (ActivityFightGroupExcel)
-        // 以配置表为准进行遍历，确保服务器新增关卡时，客户端能实时显示
+        // 2. 遍历 ActivityFightGroupExcel 配置
         foreach (var config in GameData.ActivityFightGroupData.Values)
         {
             uint groupId = (uint)config.ActivityFightGroupID;
             
-            // 3. 尝试从数据库 Map 中提取该玩家在该关卡的进度记录
-            // 采用你确定的字段名：StageInfoMap
+            // 尝试从数据库 StageInfoMap 获取该玩家的动态进度
             dbData.StageInfoMap.TryGetValue(groupId, out var info);
 
-            // 4. 组装混淆协议对象 ICLFKKNFDME
-            list.Add(new ICLFKKNFDME
+            // 3. 构造协议关卡快照
+            var stageProto = new ICLFKKNFDME
             {
-                GroupId = groupId,
-                // 如果数据库无记录（新玩家），则波次默认为 0
-                OKJNNENKLCE = info?.MaxWave ?? 0,
-                // 如果数据库无记录，解锁难度默认为 1 (矮星级)
-                AKDLDFHCFBK = info?.MaxDifficulty ?? 1,
-                // 将已完成的事件 ID 列表注入 RepeatedField
-                GGGHOOGILFH = { info?.FinishedEventIds ?? new List<uint>() }
-            });
+                GroupId = groupId,                         // Tag 6
+                OKJNNENKLCE = info?.MaxWave ?? 0,          // Tag 7: 最高波次
+                AKDLDFHCFBK = info?.MaxDifficulty ?? 1,    // Tag 5: 解锁难度
+                GGGHOOGILFH = { info?.FinishedEventIds ?? new List<uint>() } // Tag 13: 事件奖励列表
+            };
+
+            // 4. 【注入试用角色】根据你的 Excel 定义使用 SpecialAvatarID
+            // 如果该字段不为 0，则加入 AvatarList 告知客户端该关卡的试用角色
+            if (config.SpecialAvatarID > 0)
+            {
+                // 将配置表里的特殊试用角色 ID 加入协议数组
+                // 这决定了客户端关卡界面“试用角色”栏的显示
+                stageProto.AvatarList.Add((uint)config.SpecialAvatarID);
+            }
+
+            list.Add(stageProto);
         }
 
         return list;
