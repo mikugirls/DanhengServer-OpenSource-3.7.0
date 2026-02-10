@@ -13,7 +13,7 @@ public class HandlerGetFightActivityDataCsReq : Handler
         var req = GetFightActivityDataCsReq.Parser.ParseFrom(data);
 
         // 调用刚才定义的静态响应包
-        await connection.SendPacket(new PacketGetFightActivityDataScRsp());
+        await connection.SendPacket(new PacketGetFightActivityDataScRsp(connection.Player!));
         
         // 记录日志以便确认协议已触发
         // Logger.logger.Debug("[星芒战幕] 静态数据下发成功 (FightActivity 目录)");
