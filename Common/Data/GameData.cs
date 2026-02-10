@@ -359,7 +359,17 @@ public static class GameData
     public static Dictionary<int, ItemComposeConfigExcel> ItemComposeConfigData { get; private set; } = [];
 
     #endregion
+	// --- 在这里添加星芒战幕相关数据 ---
+    #region FightActivity
 
+    // 存储 ActivityFightGroup.json 的数据 (关卡基本信息、标题、试用角色)
+    public static Dictionary<int, ActivityFightGroupExcel> ActivityFightGroupData { get; private set; } = [];
+
+    // 存储 ActivityFightConfig.json 的数据 (难度、战斗ID、奖励阈值)
+    public static Dictionary<int, ActivityFightConfigExcel> ActivityFightConfigData { get; private set; } = [];
+
+    #endregion
+		
     #region Rogue
 
     public static Dictionary<int, DialogueEventExcel> DialogueEventData { get; private set; } = [];
