@@ -17,7 +17,7 @@ public class PacketCityShopInfoScNotify : BasePacket
         ShopId = (uint)shopId,
         Exp = currentExp,
         // 维持 Level = physicalMax + 1 方案，确保 UI 判定所有达标等级为“已完成”
-        Level = physicalMax + 1, 
+        Level = physicalMax, 
         TakenLevelReward = takenMask // 此时领了1级，这里发的就是 2 (二进制 10)
     };
 
