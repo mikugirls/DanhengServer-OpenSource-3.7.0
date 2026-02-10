@@ -42,10 +42,37 @@ public class FightActivityManager(PlayerInstance player) : BasePlayerManager(pla
     /// 获取活动全局进度快照
     /// </summary>
     public List<ICLFKKNFDME> GetFightActivityStageData() 
+{
+    var list = new List<ICLFKKNFDME>();
+    
+    // 获取或初始化数据库记录
+    var dbData = player.DatabaseHelper.GetInstanceOrCreateNew<PlayerFightActivity>(player.Uid);
+    
+    // 定义 8 个核心关卡 ID
+    uint[] groupIds = { 10001, 10002, 10004, 10005, 10011, 10006, 10009, 10008 };
+
+    foreach (var id in groupIds)
     {
-        // 暂时返回空列表以通过编译
-        return new List<ICLFKKNFDME>();
+        // 尝试从数据库读取，如果没有则给初始值
+        dbData.Stages.TryGetValue(id, out var stageInfo);
+
+        var stageSnapshot = new ICLFKKNFDME
+        {
+            GroupId = id,
+            OKJNNENKLCE = stageInfo?.MaxWave ?? 0,    // 实时波次
+            AKDLDFHCFBK = stageInfo?.UnlockLevel ?? 1, // 实时解锁难度
+        };
+
+        if (stageInfo?.TakenRewards != null)
+        {
+            stageSnapshot.GGGHOOGILFH.AddRange(stageInfo.TakenRewards);
+        }
+
+        list.Add(stageSnapshot);
     }
+
+    return list;
+}
 
     /// <summary>
     /// 处理进入关卡逻辑
