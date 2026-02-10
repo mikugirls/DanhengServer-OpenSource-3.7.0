@@ -1,4 +1,3 @@
-using EggLink.DanhengServer.Proto;
 using SqlSugar;
 
 namespace EggLink.DanhengServer.Database.FightActivity;
@@ -6,14 +5,21 @@ namespace EggLink.DanhengServer.Database.FightActivity;
 [SugarTable("PlayerFightActivity")]
 public class FightActivityData : BaseDatabaseDataHelper
 {
-    // 这里只存玩家打出来的“变量”
+    /// <summary>
+    /// 关卡进度映射表
+    /// Key: ActivityFightGroupID
+    /// Value: 关卡的详细存档信息
+    /// </summary>
     [SugarColumn(IsJson = true)]
-    public Dictionary<uint, FightStageResultData> Stages { get; set; } = new();
+    public Dictionary<uint, FightActivityStageInfo> StageInfoMap { get; set; } = new();
 }
 
-public class FightStageResultData
+/// <summary>
+/// 描述玩家在特定关卡中的最高成就
+/// </summary>
+public class FightActivityStageInfo
 {
-    public uint MaxWave { get; set; } = 0;               // 玩家打到的最高波次
-    public uint UnlockLevel { get; set; } = 1;            // 玩家解锁到的最高难度
-    public List<uint> TakenRewards { get; set; } = new(); // 玩家已经点过的领奖记录
+    public uint MaxWave { get; set; } = 0;                  // 历史最高波次 (对应 OKJNNENKLCE)
+    public uint MaxDifficulty { get; set; } = 1;            // 已解锁的最高难度 (对应 AKDLDFHCFBK)
+    public List<uint> FinishedEventIds { get; set; } = [];  // 已达成的事件奖励 ID (对应 GGGHOOGILFH)
 }
