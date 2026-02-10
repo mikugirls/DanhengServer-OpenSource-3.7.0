@@ -53,14 +53,7 @@ public class FightActivityManager(PlayerInstance player) : BasePlayerManager(pla
                 GGGHOOGILFH = { info?.FinishedEventIds ?? new List<uint>() } // Tag 13: 事件奖励列表
             };
 
-            // 4. 【注入试用角色】根据你的 Excel 定义使用 SpecialAvatarID
-            // 如果该字段不为 0，则加入 AvatarList 告知客户端该关卡的试用角色
-            if (config.SpecialAvatarID > 0)
-            {
-                // 将配置表里的特殊试用角色 ID 加入协议数组
-                // 这决定了客户端关卡界面“试用角色”栏的显示
-                stageProto.AvatarList.Add((uint)config.SpecialAvatarID);
-            }
+            
 
             list.Add(stageProto);
         }
