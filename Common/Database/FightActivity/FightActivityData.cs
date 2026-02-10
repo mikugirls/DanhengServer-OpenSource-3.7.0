@@ -4,7 +4,7 @@ using SqlSugar;
 namespace EggLink.DanhengServer.Database.FightActivity;
 
 [SugarTable("PlayerFightActivity")]
-public class PlayerFightActivity : BaseDatabaseDataHelper
+public class FightActivityData : BaseDatabaseDataHelper
 {
     // 这里只存玩家打出来的“变量”
     [SugarColumn(IsJson = true)]
