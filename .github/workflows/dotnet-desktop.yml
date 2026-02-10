@@ -2,9 +2,9 @@ name: DanhengServer Windows Build
 
 on:
   push:
-    branches: [ "main" ] # 修改这里，匹配你的 main 分支
+    branches: [ "clubfight" ] # 修改这里，匹配你的 main 分支
   pull_request:
-    branches: [ "main" ]
+    branches: [ "clubfight" ]
   workflow_dispatch: # 强烈建议加上这一行，允许你手动点击按钮运行
 
 jobs:
