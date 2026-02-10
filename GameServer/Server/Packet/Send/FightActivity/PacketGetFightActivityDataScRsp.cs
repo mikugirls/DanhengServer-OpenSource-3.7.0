@@ -1,39 +1,44 @@
 using EggLink.DanhengServer.Kcp;
 using EggLink.DanhengServer.Proto;
-using Google.Protobuf;
 
 namespace EggLink.DanhengServer.GameServer.Server.Packet.Send.FightActivity;
 
-public class PacketGetFightActivityDataScRsp : Packet
+public class PacketGetFightActivityDataScRsp : BasePacket
 {
-    public PacketGetFightActivityDataScRsp() : base(CmdIds.GetFightActivityDataScRsp) // 3623
+    [cite_start]// 构造函数：指定该包对应的协议 ID (3623) [cite: 243]
+    public PacketGetFightActivityDataScRsp() : base((ushort)CmdIds.GetFightActivityDataScRsp)
     {
-        var rsp = new GetFightActivityDataScRsp
+        // 1. 构造响应原型
+        var proto = new GetFightActivityDataScRsp
         {
             Retcode = 0,
             WorldLevel = 6,     // 静态世界等级
-            KAIOMPFBGKL = true  // 活动总开关：设为 true 以强制解锁活动界面
+            KAIOMPFBGKL = true  // 活动总开关：设为 true 强制解锁活动界面
         };
 
-        // 星芒战幕 8 个核心关卡 ID 列表（对应 ActivityFightGroupID）
+        // 2. 定义星芒战幕 8 个核心关卡 ID 列表
+        // 对应：不止冰火两重天、铁锂钠、趁病要命、传染型心灵炸弹、七伤灭顶、我的回合、有限火力、深度昏迷
         uint[] groupIds = { 10001, 10002, 10004, 10005, 10011, 10006, 10009, 10008 };
 
         foreach (var id in groupIds)
         {
+            // 每一关对应一个混淆的消息结构 ICLFKKNFDME
             var stageData = new ICLFKKNFDME
             {
                 GroupId = id,
-                OKJNNENKLCE = 6,    // 历史最高波次：设为 6 (满奖励/通关状态)
-                AKDLDFHCFBK = 3,    // 难度解锁：设为 3 (直接解锁全部三个难度)
+                OKJNNENKLCE = 6,    // 历史最高波次：硬编码为 6 (满评价状态)
+                AKDLDFHCFBK = 3,    // 难度解锁状态：硬编码为 3 (直接解锁全部难度)
             };
 
-            // 静态填充已领取奖励 ID，确保界面显示宝箱已开启
-            // 此 ID 可根据对应关卡的 RewardID 灵活调整
+            // 3. 静态填充已领取奖励 ID，确保界面显示宝箱已领取
+            // 此处 ID 可参考配置文件中的 RewardID
             stageData.GGGHOOGILFH.Add(3100053); 
 
-            rsp.JKHIFDGHJDO.Add(stageData);
+            // 将关卡数据加入混淆列表 JKHIFDGHJDO
+            proto.JKHIFDGHJDO.Add(stageData);
         }
 
-        this.Data = rsp.ToByteArray();
+        // 4. 使用项目基类的 SetData 方法进行序列化
+        this.SetData(proto);
     }
 }
