@@ -12,7 +12,7 @@ public class PacketGetFightActivityDataScRsp : BasePacket
         var proto = new GetFightActivityDataScRsp
         {
             Retcode = 0,
-            WorldLevel = player.Data.WorldLevel, 
+            WorldLevel = (uint)player.Data.WorldLevel, 
             KAIOMPFBGKL = true 
         };
 
