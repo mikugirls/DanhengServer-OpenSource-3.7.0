@@ -1,6 +1,8 @@
+using EggLink.DanhengServer.Data;
+using EggLink.DanhengServer.Database;
+using EggLink.DanhengServer.Database.FightActivity;
 using EggLink.DanhengServer.GameServer.Game.Player;
 using EggLink.DanhengServer.Proto;
-
 namespace EggLink.DanhengServer.GameServer.Game.FightActivity;
 /* --------------------------------------------------------------------------------
  * 【星芒战幕 (FightActivity) 协议字段业务全解析】
@@ -42,32 +44,30 @@ public class FightActivityManager(PlayerInstance player) : BasePlayerManager(pla
     /// 获取活动全局进度快照
     /// </summary>
    	public List<ICLFKKNFDME> GetFightActivityStageData() 
-{
-    var protoList = new List<ICLFKKNFDME>();
-    
-    // 1. 获取数据库动态进度
-    var dbData = DatabaseHelper.Instance!.GetInstanceOrCreateNew<FightActivityData>(player.Uid)
-
-    // 2. 遍历 Excel 里的静态配置 (GameData.ActivityFightGroupData)
-    // 这样保证了下发的关卡列表永远跟配置文件同步
-    foreach (var config in GameData.ActivityFightGroupData.Values)
     {
-        uint groupId = (uint)config.ActivityFightGroupID;
+        var list = new List<ICLFKKNFDME>();
         
-        // 尝试从数据库找该玩家的进度，找不到则说明这关还没打过
-        dbData.Stages.TryGetValue(groupId, out var progress);
+        // 修正 1: 使用 DatabaseHelper.Instance 访问
+        // 修正 2: 使用你改名后的 FightActivityData
+        var dbData = DatabaseHelper.Instance!.GetInstanceOrCreateNew<FightActivityData>(this.Player.Uid);
 
-        protoList.Add(new ICLFKKNFDME
+        // 修正 3: 确保引入 EggLink.DanhengServer.Data 命名空间
+        foreach (var config in GameData.ActivityFightGroupData.Values)
         {
-            GroupId = groupId,                                // 来自 Excel
-            OKJNNENKLCE = progress?.MaxWave ?? 0,             // 来自 DB (混淆：波次)
-            AKDLDFHCFBK = progress?.UnlockLevel ?? 1,          // 来自 DB (混淆：难度锁)
-            GGGHOOGILFH = { progress?.TakenRewards ?? [] }    // 来自 DB (混淆：已领奖)
-        });
-    }
+            uint groupId = (uint)config.ActivityFightGroupID;
+            dbData.Stages.TryGetValue(groupId, out var progress);
 
-    return protoList;
-}
+            list.Add(new ICLFKKNFDME
+            {
+                GroupId = groupId,
+                OKJNNENKLCE = progress?.MaxWave ?? 0,
+                AKDLDFHCFBK = progress?.UnlockLevel ?? 1,
+                GGGHOOGILFH = { progress?.FinishedEvents ?? new List<uint>() }
+            });
+        }
+
+        return list;
+    }
 
     /// <summary>
     /// 处理进入关卡逻辑
