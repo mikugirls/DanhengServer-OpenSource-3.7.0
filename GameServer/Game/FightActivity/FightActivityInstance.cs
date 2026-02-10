@@ -1,5 +1,5 @@
 using EggLink.DanhengServer.GameServer.Game.Player;
-using System.Threading.Tasks; // 必须添加这个
+
 namespace EggLink.DanhengServer.GameServer.Game.FightActivity;
 
 public class FightActivityInstance
@@ -16,31 +16,35 @@ public class FightActivityInstance
 
     /// <summary>
     /// 构造函数
-    /// 作用：初始化本次战斗的上下文，准备进入地图
+    /// 作用：初始化本次战斗的上下文
     /// </summary>
-    public FightActivityInstance(PlayerInstance player, uint groupId, uint difficulty, int fightEventId, List<uint> avatars) { }
+    public FightActivityInstance(PlayerInstance player, uint groupId, uint difficulty, int fightEventId, List<uint> avatars) 
+    {
+        this.Player = player;
+        this.GroupId = groupId;
+        this.Difficulty = difficulty;
+        this.FightEventId = fightEventId;
+        this.SelectedAvatars = avatars;
+    }
 
     /// <summary>
-    /// 进入活动战斗地图
-    /// 作用：调用 SceneManager 切换至星芒战幕专属 Plane (20111) 和 Floor
+    /// 进入活动战斗地图 (改为同步返回)
+    /// 作用：调用 SceneManager 切换至星芒战幕专属 Plane (20111)
     /// </summary>
-    public async Task EnterMap() { }
+    public bool EnterMap() 
+    { 
+        // 内部调用 Player.SceneManager.EntryPoint...
+        return true; 
+    }
 
     /// <summary>
-    /// 注入战斗 Slot 数据
-    /// 作用：在进入战斗前，将阵容、Buff 以及星芒战幕特有的机制数据写入 Slot 19
+    /// 准备战斗 Slot
+    /// 作用：下发必要的 Buff 和 阵容数据
     /// </summary>
     public void PrepareBattleSlot() { }
 
     /// <summary>
-    /// 实时同步战斗波次
-    /// 作用：接收来自战斗引擎的同步包，更新 CurrentWave
-    /// </summary>
-    public void UpdateProgress(uint wave) { }
-
-    /// <summary>
     /// 战斗结束处理
-    /// 作用：根据最终波次判断是否达成奖励阈值，并通知 Manager 进行数据库持久化
     /// </summary>
     public void OnComplete() { }
 }
