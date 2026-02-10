@@ -155,6 +155,7 @@ public class ShopService(PlayerInstance player) : BasePlayerManager(player)
 
         return displayItems;
     }
+	
     // --- 核心计算逻辑 ---
     public uint CalculateCityLevel(int shopId)
     {
@@ -174,72 +175,78 @@ public class ShopService(PlayerInstance player) : BasePlayerManager(player)
         }
         return level;
     }
-    public async Task<TakeCityShopRewardScRsp> TakeCityShopReward(uint shopId, uint level)
-{
-    var rsp = new TakeCityShopRewardScRsp 
-    { 
-        ShopId = shopId, 
-        Level = level, 
-        Retcode = (uint)Retcode.RetSucc,
-        Reward = new ItemList() 
-    };
-
-    // 1. 等级校验
-    uint currentLevel = CalculateCityLevel((int)shopId);
-    if (level > currentLevel) 
+  // 1. 获取当前总经验能达到的【物理最高上限】
+    // 比如：124经验，1级门槛10，2级门槛100，这里返回 2
+    public uint GetPhysicalMaxLevel(int shopId, uint totalExp)
     {
-        rsp.Retcode = (uint)Retcode.RetCityLevelNotMeet;
-        return rsp;
-    }
+        if (!GameData.CityShopConfigData.TryGetValue(shopId, out var config)) return 0;
+        if (!GameData.CityShopRewardGroupData.TryGetValue(config.RewardListGroupID, out var rewards)) return 0;
 
-    // 2. 重复领取校验
-    if (Player.CityShopData!.IsRewardTaken((int)shopId, level)) 
-    {
-        rsp.Retcode = (uint)Retcode.RetCityLevelRewardTaken;
-        return rsp;
-    }
-
-    // 3. 执行发奖：利用你定义的复合主键 (GroupID << 16 | Level)
-    if (GameData.CityShopConfigData.TryGetValue((int)shopId, out var config))
-    {
-        // 直接构造主键：GroupID 是高 16 位，Level 是低 16 位
-        int compositeKey = (config.RewardListGroupID << 16) | (int)level;
-
-        // O(1) 效率查找，不再遍历
-        if (GameData.CityShopRewardListData.TryGetValue(compositeKey, out var rewardEntry))
+        uint max = 0;
+        foreach (var r in rewards.OrderBy(x => x.TotalItem))
         {
-            if (rewardEntry.RewardID > 0)
-            {
-                // 调用你的 HandleReward 方法
-                var items = await Player.InventoryManager!.HandleReward(rewardEntry.RewardID, notify: false, sync: true);
+            if (totalExp >= r.TotalItem) max = (uint)r.Level;
+            else break;
+        }
+        return max;
+    }
 
-                // 将 ItemData 转换为 Proto 的 Item 对象
-                if (items != null)
+    // 2. 领奖逻辑：现在配合位掩码偏移 (1 << level)
+    public async Task<TakeCityShopRewardScRsp> TakeCityShopReward(uint shopId, uint level)
+    {
+        var rsp = new TakeCityShopRewardScRsp { ShopId = shopId, Level = level, Retcode = (uint)Retcode.RetSucc, Reward = new ItemList() };
+
+        if (Player.CityShopData == null) return new TakeCityShopRewardScRsp { Retcode = (uint)Retcode.RetFail };
+
+        // [关键修改] A. 经验校验：只要当前经验对应的物理等级 >= 请求等级即可
+        uint totalExp = Player.CityShopData.GetExp((int)shopId);
+        uint physicalMax = GetPhysicalMaxLevel((int)shopId, totalExp);
+        if (level > physicalMax) 
+        {
+            rsp.Retcode = (uint)Retcode.RetCityLevelNotMeet;
+            return rsp;
+        }
+
+        // [关键修改] B. 顺序校验：如果要领第 N 级，第 N-1 级必须已经领过
+        // 注意：这里 IsRewardTaken 内部已经改成了 (1 << level) 逻辑
+        if (level > 1 && !Player.CityShopData.IsRewardTaken((int)shopId, level - 1)) 
+        {
+            if (Util.GlobalDebug.EnableVerboseLog)
+                Console.WriteLine($"[SHOP] 拦截跳级领取: 请先领取第 {level - 1} 级");
+            rsp.Retcode = (uint)Retcode.RetCityLevelNotMeet; // 或者自定义错误码
+            return rsp;
+        }
+
+        // C. 重复领取校验
+        if (Player.CityShopData.IsRewardTaken((int)shopId, level)) 
+        {
+            rsp.Retcode = (uint)Retcode.RetCityLevelRewardTaken;
+            return rsp;
+        }
+
+        // D. 执行发奖 (保持你原来的复合主键逻辑，这是对的)
+        if (GameData.CityShopConfigData.TryGetValue((int)shopId, out var config))
+        {
+            int compositeKey = (config.RewardListGroupID << 16) | (int)level;
+            if (GameData.CityShopRewardListData.TryGetValue(compositeKey, out var rewardEntry))
+            {
+                if (rewardEntry.RewardID > 0)
                 {
-                    foreach (var item in items)
+                    var items = await Player.InventoryManager!.HandleReward(rewardEntry.RewardID, notify: false, sync: true);
+                    if (items != null)
                     {
-                        rsp.Reward.ItemList_.Add(new Item
-                        {
-                            ItemId = (uint)item.ItemId,
-                            Num = (uint)item.Count
-                        });
+                        foreach (var item in items)
+                            rsp.Reward.ItemList_.Add(new Item { ItemId = (uint)item.ItemId, Num = (uint)item.Count });
                     }
                 }
             }
         }
-        else
-        {
-            // 如果表里没这行配置
-            if (Util.GlobalDebug.EnableVerboseLog)
-                Console.WriteLine($"[SHOP_ERROR] 未找到城市商店配置。Key: {compositeKey} | ShopID: {shopId} | Level: {level}");
-        }
+
+        // [关键修改] E. 标记并保存 (内部使用 1 << level)
+        Player.CityShopData.MarkRewardTaken((int)shopId, level);
+        Database.DatabaseHelper.ToSaveUidList.SafeAdd(Player.Uid);
+        
+        return rsp;
     }
-
-    // 4. 更新数据库状态
-    Player.CityShopData.MarkRewardTaken((int)shopId, level);
-    Database.DatabaseHelper.ToSaveUidList.SafeAdd(Player.Uid);
-
-    return rsp;
-}
 	    
 }
