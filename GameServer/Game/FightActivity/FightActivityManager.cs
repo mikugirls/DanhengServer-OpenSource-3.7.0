@@ -46,7 +46,7 @@ public class FightActivityManager(PlayerInstance player) : BasePlayerManager(pla
     var protoList = new List<ICLFKKNFDME>();
     
     // 1. 获取数据库动态进度
-    var dbData = player.DatabaseHelper.GetInstanceOrCreateNew<PlayerFightActivity>(player.Uid);
+    var dbData = DatabaseHelper.Instance!.GetInstanceOrCreateNew<FightActivityData>(player.Uid)
 
     // 2. 遍历 Excel 里的静态配置 (GameData.ActivityFightGroupData)
     // 这样保证了下发的关卡列表永远跟配置文件同步
