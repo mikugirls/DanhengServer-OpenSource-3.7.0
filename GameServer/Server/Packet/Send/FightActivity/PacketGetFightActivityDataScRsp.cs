@@ -5,7 +5,7 @@ namespace EggLink.DanhengServer.GameServer.Server.Packet.Send.FightActivity;
 
 public class PacketGetFightActivityDataScRsp : BasePacket
 {
-    [cite_start]// 构造函数：指定该包对应的协议 ID (3623) [cite: 243]
+    // 构造函数：指定该包对应的协议 ID (3623) [cite: 243]
     public PacketGetFightActivityDataScRsp() : base((ushort)CmdIds.GetFightActivityDataScRsp)
     {
         // 1. 构造响应原型
