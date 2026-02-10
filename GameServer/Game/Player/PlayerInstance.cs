@@ -218,7 +218,7 @@ public partial class PlayerInstance(PlayerData data)
         OfferingManager = new OfferingManager(this);
 		// --- 添加下面这一行来实例化你的管理器 ---
 		//FightFestManager = new FightFestManager(this);
-		FightActivityManager = new FightActivityManage（this）；
+		FightActivityManager = new FightActivityManage(this);
         BoxingClubManager = new BoxingClubManager(this);
 		// --- 添加派遣管理器初始化 ---
         ExpeditionManager = new ExpeditionManager(this); //
