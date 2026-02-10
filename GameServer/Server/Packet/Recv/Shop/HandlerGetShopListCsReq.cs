@@ -14,15 +14,27 @@ public class HandlerGetShopListCsReq : Handler
         var player = connection.Player;
         if (player == null) return;
 
-        // 1. 发送商店列表响应 (这里面你应该已经改好了，会带上真实的 CityLevel)
+        // 1. 发送商店列表响应
         await connection.SendPacket(new PacketGetShopListScRsp(player, req.ShopType));
 
-        // 2. 【核心修复】检查是否为城市商店 (401, 402, 403)
-        // 只有发送了这个 Notify，客户端左侧的“城市经验条”和“奖励预览”才会正确加载数据
-        if (GameData.CityShopConfigData.ContainsKey((int)req.ShopType))
+        // 2. 【核心修复】找到该分类下所有的城市商店并发送 Notify
+        // 遍历所有城市商店配置
+        foreach (var cityConfig in GameData.CityShopConfigData.Values)
         {
-            // 发送我们在上一阶段定义的通知包
-            await connection.SendPacket(new PacketCityShopInfoScNotify(player, (int)req.ShopType));
+            // 检查这个城市商店是否属于玩家当前请求的这个 ShopType
+            // 注意：这里需要根据你的配置结构，确认 ShopID 是否匹配
+            // 如果你确定 401 就在这个分类里，也可以简单粗暴地判断
+            if (GameData.ShopConfigData.TryGetValue(cityConfig.ShopID, out var shopConfig))
+            {
+                // 如果该商店的分类与请求一致，立刻同步城市经验
+                if (shopConfig.ShopType == req.ShopType)
+                {
+                    await connection.SendPacket(new PacketCityShopInfoScNotify(player, cityConfig.ShopID));
+                    
+                    if (Util.GlobalDebug.EnableVerboseLog)
+                        Console.WriteLine($"[SHOP_INIT] 自动同步城市商店信息: ShopID {cityConfig.ShopID} | Type {req.ShopType}");
+                }
+            }
         }
     }
 }
