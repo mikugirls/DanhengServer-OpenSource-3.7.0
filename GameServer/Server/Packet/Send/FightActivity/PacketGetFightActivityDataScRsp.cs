@@ -16,8 +16,11 @@ public class PacketGetFightActivityDataScRsp : BasePacket
             KAIOMPFBGKL = true 
         };
 
-        // 注入关卡快照
-        proto.JKHIFDGHJDO.AddRange(player.FightActivityManager.GetFightActivityStageData());
+        // 修正第 20 行的潜在空引用警告 (CS8602)
+	if (player.FightActivityManager != null) 
+	{
+    proto.JKHIFDGHJDO.AddRange(player.FightActivityManager.GetFightActivityStageData());
+	}
 
         this.SetData(proto);
     }
